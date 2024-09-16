@@ -1,0 +1,64 @@
+DB:
+
+CREATE EXTENSION postgis;
+
+
+CREATE TABLE schedules (
+    id SERIAL PRIMARY KEY,
+    street_name VARCHAR(255) NOT NULL,
+    suburb_name VARCHAR(255) NOT NULL,
+    side VARCHAR(255) NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    from_street_name VARCHAR(255),
+    to_street_name VARCHAR(255),
+    one_way BOOLEAN,
+    week_1 BOOLEAN DEFAULT FALSE,
+    week_2 BOOLEAN DEFAULT FALSE,
+    week_3 BOOLEAN DEFAULT FALSE,
+    week_4 BOOLEAN DEFAULT FALSE,
+    week_5 BOOLEAN DEFAULT FALSE,
+    sunday BOOLEAN DEFAULT FALSE,
+    monday BOOLEAN DEFAULT FALSE,
+    tuesday BOOLEAN DEFAULT FALSE,
+    wednesday BOOLEAN DEFAULT FALSE,
+    thursday BOOLEAN DEFAULT FALSE,
+    friday BOOLEAN DEFAULT FALSE,
+    saturday BOOLEAN DEFAULT FALSE,
+    every_day BOOLEAN DEFAULT FALSE,
+    year_round BOOLEAN DEFAULT FALSE,
+    north_end_pilot BOOLEAN DEFAULT FALSE,
+    has_duplicate BOOLEAN DEFAULT FALSE
+);
+
+CREATE TABLE sidewalks (
+    id SERIAL PRIMARY KEY,
+    schedule_id INTEGER REFERENCES schedules(id),
+    geometry Geometry(LINESTRING),
+    status VARCHAR(255) NOT NULL
+);
+
+
+
+INSERT INTO sidewalks VALUES (2, 1, (SELECT ST_AsText(ST_GeomFromGeoJSON('{"type": "LineString", "coordinates": [[-71.03264793252747,42.37402773004487],[-71.03250568142722, 42.374030198610946],[-71.03234379935947,42.37403727410114],[-71.03205536068562,42.37406141276441],[-71.03181938296595,42.37408670052884],[-71.03177104521468,42.374097842930205]]}'))));
+
+
+
+# Define your coordinates and radius
+longitude = -71.03264793252747
+latitude = 42.37402773004487
+radius = 500  # radius in meters
+
+query = text("""
+    SELECT id, schedule_id, ST_AsGeoJSON(geometry) AS geojson
+    FROM sidewalks
+    WHERE ST_DWithin(
+        geometry,
+        ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326),
+        :radius
+    );
+""")
+
+with engine.connect() as connection:
+    result = connection.execute(query, {'longitude': longitude, 'latitude': latitude, 'radius': radius})
+    sidewalks = result.fetchall()
