@@ -1,9 +1,6 @@
-version: '3.8'
-
 services:
   postgres:
     build: .
-    container_name: sweepmaps-db
     environment:
       POSTGRES_USER: joey
       POSTGRES_PASSWORD: sweep
@@ -15,7 +12,6 @@ services:
 
   nginx:
     image: nginx:latest
-    container_name: sweepmaps-nginx
     ports:
       - "80:80"
     volumes:
