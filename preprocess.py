@@ -10,127 +10,92 @@ import re
 
 from sqlalchemy import create_engine, text
 
-
-with open('/Users/joey/Documents/sweepmaps/boston_sidewalks_geocoded.geojson', 'r') as f:
+with open('/Users/joey/Documents/sweepmaps/geojsons/boston_sidewalks_geocoded.geojson', 'r') as f:
     output_sidewalks_geojson = json.load(f)
 
-# NORMALIZE DATASETS #
+## PREPROCESS DATA ##
+try:
+    street_cleaning_df = pd.read_csv('data/street_cleaning_data_deduped.csv')
+    sidewalk_df = pd.read_csv('data/sidewalk_data.csv')
+except:
+    ## NORMALIZE DATASETS ##
+    street_cleaning_df = pd.read_csv('/Users/joey/Documents/sweepmaps/street_cleaning_good.csv')
 
-# TODO: BUG - ingested wrong dataframe into schedules table - dataframe with dups dropped was ingested
-# Need to find out which ones were dropped
-
-street_cleaning_df = pd.read_csv('/Users/joey/Documents/sweepmaps/street_cleaning_good.csv')
-
-street_cleaning_df['suburb'] = street_cleaning_df['dist_name']
-street_cleaning_df.loc[street_cleaning_df['suburb'] == 'South Dorchester', 'suburb'] = 'Dorchester'
-street_cleaning_df.loc[street_cleaning_df['suburb'] == 'North Dorchester', 'suburb'] = 'Dorchester'
-street_cleaning_df.loc[street_cleaning_df['suburb'] == 'DCR', 'suburb'] = 'Dorchester'
-
-
-sidewalk_dict_list = [feature['properties'] for feature in output_sidewalks_geojson["features"]]
-sidewalk_df = pd.DataFrame(sidewalk_dict_list)
-sidewalk_df['suburb'].unique()
-
-rows_with_nan_in_A = sidewalk_df[sidewalk_df['suburb'].isna()]
-sidewalk_df.dropna(subset=['suburb'])
-
-sidewalk_df = sidewalk_df[sidewalk_df['suburb'] != 'East Cambridge']
-sidewalk_df = sidewalk_df[sidewalk_df['suburb'] != 'North Quincy']
-sidewalk_df.loc[sidewalk_df['suburb'] == 'Fenway / Kenmore', 'suburb'] = 'Fenway/Kenmore'
-sidewalk_df.loc[sidewalk_df['suburb'] == 'Allston', 'suburb'] = 'Allston/Brighton'
-sidewalk_df.loc[sidewalk_df['suburb'] == 'Brighton', 'suburb'] = 'Allston/Brighton'
-sidewalk_df.loc[sidewalk_df['suburb'] == 'Downtown Boston', 'suburb'] = 'Downtown'
-sidewalk_df.loc[sidewalk_df['suburb'] == 'Chestnut Hill', 'suburb'] = 'Allston/Brighton'
-sidewalk_df.loc[sidewalk_df['suburb'] == 'Newton Corner', 'suburb'] = 'Allston/Brighton'
-sidewalk_df.loc[sidewalk_df['suburb'] == 'Mattapan', 'suburb'] = 'Dorchester'
+    street_cleaning_df['suburb'] = street_cleaning_df['dist_name']
+    street_cleaning_df.loc[street_cleaning_df['suburb'] == 'South Dorchester', 'suburb'] = 'Dorchester'
+    street_cleaning_df.loc[street_cleaning_df['suburb'] == 'North Dorchester', 'suburb'] = 'Dorchester'
+    street_cleaning_df.loc[street_cleaning_df['suburb'] == 'DCR', 'suburb'] = 'Dorchester'
 
 
+    sidewalk_dict_list = [feature['properties'] for feature in output_sidewalks_geojson["features"]]
+    sidewalk_df = pd.DataFrame(sidewalk_dict_list)
+    sidewalk_df['suburb'].unique()
 
-def normalize_street_name(name):
-    if not isinstance(name, str):
-        return name
-    name = name.lower()
-    name = name.replace('road', 'rd').replace('boulevard', 'blvd').replace('street', 'st').replace('avenue', 'ave').replace('court', 'ct').replace('circle', 'cr').replace('terrace', 'ter').replace('square', 'sq').replace('drive', 'dr').replace('parkway', 'pkwy').replace('place', 'pl').replace('lane', 'ln').replace('plaza', 'plz')
-    name = ''.join(char for char in name if char.isalnum() or char.isspace())
-    return name.strip()
+    rows_with_nan_in_A = sidewalk_df[sidewalk_df['suburb'].isna()]
+    sidewalk_df.dropna(subset=['suburb'])
 
-street_cleaning_df['normalized_st_name'] = street_cleaning_df['st_name'].apply(normalize_street_name)
-street_cleaning_df.loc[street_cleaning_df['main_id'] == 3692, 'normalized_st_name'] = 'rockvale cr'
-street_cleaning_df.loc[street_cleaning_df['main_id'] == 3693, 'normalized_st_name'] = 'rockvale cr'
-street_cleaning_df.loc[street_cleaning_df['main_id'] == 1665, 'normalized_st_name'] = 'mamelon cr'
-street_cleaning_df.loc[street_cleaning_df['main_id'] == 1666, 'normalized_st_name'] = 'mamelon cr'
-street_cleaning_df.loc[street_cleaning_df['main_id'] == 2662, 'normalized_st_name'] = 'raynor cr'
-street_cleaning_df.loc[street_cleaning_df['main_id'] == 2663, 'normalized_st_name'] = 'raynor cr'
-
-
-sidewalk_df['normalized_st_name'] = sidewalk_df['road'].apply(normalize_street_name)
+    sidewalk_df = sidewalk_df[sidewalk_df['suburb'] != 'East Cambridge']
+    sidewalk_df = sidewalk_df[sidewalk_df['suburb'] != 'North Quincy']
+    sidewalk_df.loc[sidewalk_df['suburb'] == 'Fenway / Kenmore', 'suburb'] = 'Fenway/Kenmore'
+    sidewalk_df.loc[sidewalk_df['suburb'] == 'Allston', 'suburb'] = 'Allston/Brighton'
+    sidewalk_df.loc[sidewalk_df['suburb'] == 'Brighton', 'suburb'] = 'Allston/Brighton'
+    sidewalk_df.loc[sidewalk_df['suburb'] == 'Downtown Boston', 'suburb'] = 'Downtown'
+    sidewalk_df.loc[sidewalk_df['suburb'] == 'Chestnut Hill', 'suburb'] = 'Allston/Brighton'
+    sidewalk_df.loc[sidewalk_df['suburb'] == 'Newton Corner', 'suburb'] = 'Allston/Brighton'
+    sidewalk_df.loc[sidewalk_df['suburb'] == 'Mattapan', 'suburb'] = 'Dorchester'
 
 
-def even_or_odd(number):
-    if pd.isna(number):
-        return 'none'
+    def normalize_street_name(name):
+        if not isinstance(name, str):
+            return name
+        name = name.lower()
+        name = name.replace('road', 'rd').replace('boulevard', 'blvd').replace('street', 'st').replace('avenue', 'ave').replace('court', 'ct').replace('circle', 'cr').replace('terrace', 'ter').replace('square', 'sq').replace('drive', 'dr').replace('parkway', 'pkwy').replace('place', 'pl').replace('lane', 'ln').replace('plaza', 'plz')
+        name = ''.join(char for char in name if char.isalnum() or char.isspace())
+        return name.strip()
 
-    parts = re.split(r'[;,-]', number)
-    first_num = parts[0]
-    num_str = ''.join(re.findall(r'\d+', first_num))
-    try:
-        result = 'even' if int(num_str) % 2 == 0 else 'odd'
-    except Exception as e:
-        print(f"error processing number '{number}': {e}")
-        result = 'unknown'
-    return result
-
-sidewalk_df['side'] = sidewalk_df['house_number'].apply(even_or_odd)
-
-street_cleaning_df['side'] = street_cleaning_df['side'].str.lower()
-street_cleaning_df['side'] = street_cleaning_df['side'].fillna('none')
+    street_cleaning_df['normalized_st_name'] = street_cleaning_df['st_name'].apply(normalize_street_name)
+    street_cleaning_df.loc[street_cleaning_df['main_id'] == 3692, 'normalized_st_name'] = 'rockvale cr'
+    street_cleaning_df.loc[street_cleaning_df['main_id'] == 3693, 'normalized_st_name'] = 'rockvale cr'
+    street_cleaning_df.loc[street_cleaning_df['main_id'] == 1665, 'normalized_st_name'] = 'mamelon cr'
+    street_cleaning_df.loc[street_cleaning_df['main_id'] == 1666, 'normalized_st_name'] = 'mamelon cr'
+    street_cleaning_df.loc[street_cleaning_df['main_id'] == 2662, 'normalized_st_name'] = 'raynor cr'
+    street_cleaning_df.loc[street_cleaning_df['main_id'] == 2663, 'normalized_st_name'] = 'raynor cr'
 
 
-# make boolean value columns with all boolean cols
-bool_columns = ['one_way', 'week_1', 'week_2', 'week_3', 'week_4', 'week_5', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'every_day', 'year_round', 'north_end_pilot']
-for bool_column in bool_columns:
-    street_cleaning_df[f"{bool_column}_bool"] = street_cleaning_df[bool_column] == 't'
+    sidewalk_df['normalized_st_name'] = sidewalk_df['road'].apply(normalize_street_name)
 
 
-# duplicates = street_cleaning_df[street_cleaning_df.duplicated(subset=['suburb', 'normalized_st_name', 'side', 'from', 'to', 'start_time', 'end_time',  *bool_columns], keep=False)]
-# grouped = street_cleaning_df.groupby(['suburb', 'normalized_st_name', 'side', 'from', 'to', 'start_time', 'end_time',  *bool_columns])
-# duplicates = grouped.filter(lambda x: len(x) > 1)
+    def even_or_odd(number):
+        if pd.isna(number):
+            return 'none'
 
-# print(duplicates)
+        parts = re.split(r'[;,-]', number)
+        first_num = parts[0]
+        num_str = ''.join(re.findall(r'\d+', first_num))
+        try:
+            result = 'even' if int(num_str) % 2 == 0 else 'odd'
+        except Exception as e:
+            print(f"error processing number '{number}': {e}")
+            result = 'unknown'
+        return result
 
-# # Filter groups to keep only those with more than one row
-# duplicates = grouped.filter(lambda x: len(x) > 1)
+    sidewalk_df['side'] = sidewalk_df['house_number'].apply(even_or_odd)
 
-# print(duplicates)
-
-
-street_cleaning_df = street_cleaning_df.drop_duplicates(subset=['suburb', 'normalized_st_name', 'side', 'from', 'to', 'start_time', 'end_time',  *bool_columns])
-
-
-street_cleaning_df.to_csv('street_cleaning_data_deduped.csv', index=False)
-street_cleaning_missing = pd.read_csv('street_cleaning_data.csv')
-
-
-# Find rows in df1 but not in df2
-missing = street_cleaning_df.merge(street_cleaning_missing, on=['suburb', 'normalized_st_name', 'side', 'from', 'to', 'start_time', 'end_time',  *bool_columns], how='left', indicator=True)
-missing = missing[missing['_merge'] == 'left_only']
-missing = missing.drop(columns=['_merge'])
-
-print("Rows in df1 but not in df2:")
-print(missing)
-
-# Find rows in df2 but not in df1
-missing_in_df1 = df2.merge(df1, how='left', on=['col1', 'col2'], indicator=True)
-missing_in_df1 = missing_in_df1[missing_in_df1['_merge'] == 'left_only']
-missing_in_df1 = missing_in_df1.drop(columns=['_merge'])
-
-print("Rows in df2 but not in df1:")
-print(missing_in_df1)
+    street_cleaning_df['side'] = street_cleaning_df['side'].str.lower()
+    street_cleaning_df['side'] = street_cleaning_df['side'].fillna('none')
 
 
+    # make boolean value columns with all boolean cols
+    bool_columns = ['one_way', 'week_1', 'week_2', 'week_3', 'week_4', 'week_5', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'every_day', 'year_round', 'north_end_pilot']
+    for bool_column in bool_columns:
+        street_cleaning_df[f"{bool_column}_bool"] = street_cleaning_df[bool_column] == 't'
+
+    # there are some mistake duplicates
+    street_cleaning_df = street_cleaning_df.drop_duplicates(subset=['suburb', 'normalized_st_name', 'side', 'from', 'to', 'start_time', 'end_time',  *bool_columns])
 
 
-sidewalk_df.to_csv('sidewalk_data.csv', index=False)
+    street_cleaning_df.to_csv('data/street_cleaning_data_deduped.csv', index=False)
+    sidewalk_df.to_csv('data/sidewalk_data.csv', index=False)
 
 # DETERMINE DUPLICATE SCHEDULES
 # TODO: go back and manually reassign schedules to sidewalks with multiple schedules - label as "maybe"
@@ -183,7 +148,7 @@ with open('/Users/joey/Documents/sweepmaps/boston_street_cleaning_2.geojson', 'w
 
 
 
-# DB INGESTION
+## DB INGESTION ##
 user = 'joey'
 password = 'sweep'
 host = 'localhost'
@@ -207,6 +172,7 @@ schedules_db_columns = ['id', 'street_name', 'suburb_name', 'side', 'start_time'
 
 schedules_table_df = street_cleaning_db_df[schedules_db_columns]
 
+# fix one-offs that don't have a suburb name
 schedules_table_df.loc[schedules_table_df['id'] == 3263, 'suburb_name'] = 'South Boston'
 schedules_table_df.loc[schedules_table_df['id'] == 3312, 'suburb_name'] = 'Dorchester'
 schedules_table_df.loc[schedules_table_df['id'] == 3313, 'suburb_name'] = 'Dorchester'
@@ -227,6 +193,7 @@ schedules_table_df.to_sql('schedules', engine, if_exists='append', index=False)
 
 
 # SIDEWALKS
+# use merged DF to preserve relationship with schedules
 sidewalk_db_df = merged_df.copy()
 sidewalk_db_df['schedule_id_raw'] = pd.to_numeric(sidewalk_db_df['main_id'], errors='coerce')
 sidewalk_db_df['schedule_id'] = sidewalk_db_df['schedule_id_raw'].astype('Int64')
@@ -239,7 +206,6 @@ def set_status(row):
     else:
         return 'ok'
 
-# Apply the function to each row
 sidewalk_db_df['status'] = sidewalk_db_df.apply(set_status, axis=1)
 
 geometry_dict = {}

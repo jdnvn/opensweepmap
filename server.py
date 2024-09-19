@@ -19,9 +19,11 @@ DATABASE_URL = f'postgresql://{user}:{password}@{host}:{port}/{database}'
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 
+
 @app.route('/')
 def map_view():
     return render_template('map.html')
+
 
 def get_next_sweeping_date(schedule):
     # Define days of the week mapping
@@ -62,45 +64,44 @@ def get_next_sweeping_date(schedule):
 
 
 def get_sidewalks_data(ids=[], as_json=True, session=None):
-    session = session if session else Session()
+    with Session() as session:
+        sidewalks_query = session.query(
+            Sidewalk.id,
+            Sidewalk.schedule_id,
+            Sidewalk.status,
+            func.ST_AsGeoJSON(Sidewalk.geometry).label('geojson'),
+            Schedule.street_name,
+            Schedule.suburb_name,
+            Schedule.side,
+            Schedule.start_time,
+            Schedule.end_time,
+            Schedule.from_street_name,
+            Schedule.to_street_name,
+            Schedule.has_duplicates,
+            Schedule.one_way,
+            Schedule.week_1,
+            Schedule.week_2,
+            Schedule.week_3,
+            Schedule.week_4,
+            Schedule.week_5,
+            Schedule.sunday,
+            Schedule.monday,
+            Schedule.tuesday,
+            Schedule.wednesday,
+            Schedule.thursday,
+            Schedule.friday,
+            Schedule.saturday,
+            Schedule.every_day,
+            Schedule.year_round,
+            Schedule.north_end_pilot
+        ).outerjoin(Schedule, Sidewalk.schedule_id == Schedule.id)
 
-    sidewalks_query = session.query(
-        Sidewalk.id,
-        Sidewalk.schedule_id,
-        Sidewalk.status,
-        func.ST_AsGeoJSON(Sidewalk.geometry).label('geojson'),
-        Schedule.street_name,
-        Schedule.suburb_name,
-        Schedule.side,
-        Schedule.start_time,
-        Schedule.end_time,
-        Schedule.from_street_name,
-        Schedule.to_street_name,
-        Schedule.has_duplicates,
-        Schedule.one_way,
-        Schedule.week_1,
-        Schedule.week_2,
-        Schedule.week_3,
-        Schedule.week_4,
-        Schedule.week_5,
-        Schedule.sunday,
-        Schedule.monday,
-        Schedule.tuesday,
-        Schedule.wednesday,
-        Schedule.thursday,
-        Schedule.friday,
-        Schedule.saturday,
-        Schedule.every_day,
-        Schedule.year_round,
-        Schedule.north_end_pilot
-    ).outerjoin(Schedule, Sidewalk.schedule_id == Schedule.id)
+        if ids:
+            sidewalks_query = sidewalks_query.filter(Sidewalk.id.in_(ids))
 
-    if ids:
-        sidewalks_query = sidewalks_query.filter(Sidewalk.id.in_(ids))
-
-    sidewalks_data = sidewalks_query.all()
-    if as_json:
-        sidewalks_data = [row._asdict() for row in sidewalks_data]
+        sidewalks_data = sidewalks_query.all()
+        if as_json:
+            sidewalks_data = [row._asdict() for row in sidewalks_data]
 
     return sidewalks_data
 
@@ -118,6 +119,12 @@ def get_sidewalks():
 
 @app.route('/sidewalks/<id>', methods=['PUT'])
 def put_sidewalk(id):
+    sidewalks = get_sidewalks_data(ids=[id])
+    if not sidewalks:
+        return jsonify({'message': 'not found'}), 404
+
+    sidewalk = sidewalks[0]
+
     try:
         content = request.get_json()
         print("incoming PUT request for sidewalk id: ", id)
@@ -128,21 +135,26 @@ def put_sidewalk(id):
         print("ERROR: {e}")
         return jsonify({'error': str(e), 'message': 'Invalid request body'}), 422
 
-    try:
-        session = Session()
-        stmt = (
-            update(Sidewalk).
-            where(Sidewalk.id == id).
-            values(schedule_id=schedule_id, status=status)
-        )
+    if sidewalk['schedule_id'] != int(schedule_id):
+        status = 'ok'
 
-        session.execute(stmt)
-        session.commit()
+    try:
+        with Session() as session:
+            stmt = (
+                update(Sidewalk).
+                where(Sidewalk.id == id).
+                values(schedule_id=schedule_id, status=status)
+            )
+
+            session.execute(stmt)
+            session.commit()
 
         updated_sidewalk = get_sidewalks_data(ids=[id])[0]
     except Exception as e:
         print("ERROR: {e}")
         return jsonify({'error': str(e), 'message': 'Something went wrong'}), 500
+
+    print(f"updated sidewalk: {updated_sidewalk}")
 
     return jsonify(updated_sidewalk)
 

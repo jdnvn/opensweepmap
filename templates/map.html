@@ -23,18 +23,32 @@
     <div id="map"></div>
     
     <script>
-        // Initialize the map and set its view
-        var map = L.map('map').setView([42.3601, -71.0589], 13); // Centered on Boston, MA
+        var map = L.map('map').setView([42.342999, -71.069216], 18);
 
-        // Add the OpenStreetMap tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        function sidewalkStyle(sidewalk) {
+        var sidewalkFeatures = {};
+        var sidewalkLayer; // Variable to hold the GeoJSON layer
+
+        function sidewalkStyle(status) {
+            let color;
+            switch (status) {
+                case "unresolved":
+                    color = '#FF0000'; // Red for unresolved
+                    break;
+                case "missing":
+                    color = '#00ffff'; // Cyan for missing
+                    break;
+                case "ok":
+                default:
+                    color = '#327da8'; // Blue for ok
+                    break;
+            }
             return {
-                color: '#ff7800',  // Orange color for the sidewalk lines
-                weight: 1,         // Bold line
+                color: color,
+                weight: 2,         // Bold line
                 opacity: 0.8       // Slight transparency
             };
         }
@@ -57,77 +71,113 @@
                 if (!response.ok) {
                     throw new Error('Network response was not ok');
                 }
-                console.log(response.json());
                 return response.json(); // or response.text() if the server returns text
             })
             .then(data => {
-                alert(`Form Submitted for ${sidewalkId} New ID: ` + scheduleId);
                 console.log('Success:', data); // Handle the response data
+                drawFeature(data);
             })
             .catch(error => {
                 console.error('Error:', error); // Handle errors
             });
         }
 
-        // Function to fetch the sidewalk GeoJSON data
-        async function fetchSidewalks() {
-            try {
-                // Example API call (adjust the URL if necessary)
-                const response = await fetch('http://127.0.0.1:5000/sidewalks');
-                const data = await response.json();
-
-                // Loop through the data and add each GeoJSON object to the map
-                data.data.forEach(sidewalk => {
-                    console.log(sidewalk)
-                    const tooltipContent = `ID: ${sidewalk.id} Schedule ID: ${sidewalk.schedule_id} Street: ${sidewalk.street_name} ${sidewalk.side} Side. From ${sidewalk.from_street_name} To ${sidewalk.to_street_name}`;
-                    var geojson = JSON.parse(sidewalk.geojson);
-
-                    var sidewalkStyle = {
-                        color: '#327da8',  // Orange color for the sidewalk lines
-                        weight: 2,         // Bold line
-                        opacity: 0.8       // Slight transparency
-                    };
-                    if (sidewalk.status == "unresolved") {
-                        sidewalkStyle.color = '#FF0000';
-                    } else if (sidewalk.status == "missing") {
-                        sidewalkStyle.color = '#00ffff'
-                    }
-
-                    var sidewalkLine = L.geoJSON(geojson, {
-                        style: sidewalkStyle,
-                        onEachFeature: function (feature, layer) {
-                            if (sidewalk.street_name) {
-                                layer.bindTooltip(tooltipContent, { permanent: false, direction: 'top' });
-                            }
-                        }
-                    }).addTo(map);
-
+        function drawFeature(sidewalkData) {
+            if (sidewalkFeatures[sidewalkData.id]) {
+                map.removeLayer(sidewalkFeatures[sidewalkData.id]); // Remove the old feature
+            }
+            var featureLayer = L.geoJSON(JSON.parse(sidewalkData.geojson), {
+                style: sidewalkStyle(sidewalkData.status),
+                onEachFeature: function (feature, layer) {
+                    const tooltipContent = `ID: ${sidewalkData.id} Schedule ID: ${sidewalkData.schedule_id} Street: ${sidewalkData.street_name} ${sidewalkData.side} Side. From ${sidewalkData.from_street_name} To ${sidewalkData.to_street_name}`;
+                    
+                    layer.bindTooltip(tooltipContent, { permanent: false, direction: 'top' });
+                    
                     var popupContent = `
                         <form id="popupForm">
                             <label for="schedule_id">Corrected Schedule ID:</label><br>
-                            <input type="text" id="schedule_id" name="schedule_id" value=${sidewalk.schedule_id}><br>
-
+                            <input type="text" id="schedule_id" name="schedule_id" value=${sidewalkData.schedule_id}><br>
+                            
                             <label for="sidewalk_status">Sidewalk Status:</label>
                             <select name="sidewalk_status" id="sidewalk_status">
-                                <option value="missing" ${sidewalk.status === 'missing' ? 'selected' : ''}>Missing</option>
-                                <option value="unresolved" ${sidewalk.status === 'unresolved' ? 'selected' : ''}>Unresolved</option>
-                                <option value="ok" ${sidewalk.status === 'ok' ? 'selected' : ''}>OK</option>
+                                <option value="missing" ${sidewalkData.status === 'missing' ? 'selected' : ''}>Missing</option>
+                                <option value="unresolved" ${sidewalkData.status === 'unresolved' ? 'selected' : ''}>Unresolved</option>
+                                <option value="ok" ${sidewalkData.status === 'ok' ? 'selected' : ''}>OK</option>
                             </select>
-                            <button type="button" onclick="submitForm(${sidewalk.id})">Submit</button>
+                            <button type="button" onclick="submitForm(${sidewalkData.id})">Submit</button>
                         </form>
                     `;
-                    sidewalkLine.bindPopup(popupContent);
+                    layer.bindPopup(popupContent);
+                }
+            }).addTo(map);
+            sidewalkFeatures[sidewalkData.id] = featureLayer;
+        }
 
-                    // Function to handle form submission
+        async function fetchSidewalks() {
+            try {
+                const response = await fetch('http://127.0.0.1:5000/sidewalks');
+                const data = await response.json();
 
-                    // Optionally, add an event listener for when the marker is clicked
-                    sidewalkLine.on('click', function(e) {
-                        sidewalkLine.openPopup();
-                    });
+                // // Remove existing sidewalk layer if it exists
+                // if (sidewalkLayer) {
+                //     map.removeLayer(sidewalkLayer);
+                // }
+
+                // // Create a new GeoJSON layer
+                // sidewalkLayer = L.geoJSON(null, {
+                //     style: function(feature) {
+                //         // Apply style based on the sidewalk data
+                //         const sidewalk = data.data.find(s => s.id === feature.properties.id);
+                //         return sidewalkStyle(sidewalk);
+                //     },
+                //     onEachFeature: function (feature, layer) {
+                //         const sidewalk = data.data.find(s => s.id === feature.properties.id); // Find sidewalk by ID
+                //         const tooltipContent = `ID: ${sidewalk.id} Schedule ID: ${sidewalk.schedule_id} Street: ${sidewalk.street_name} ${sidewalk.side} Side. From ${sidewalk.from_street_name} To ${sidewalk.to_street_name}`;
+                        
+                //         if (sidewalk.street_name) {
+                //             layer.bindTooltip(tooltipContent, { permanent: false, direction: 'top' });
+                //         }
+                        
+                //         var popupContent = `
+                //             <form id="popupForm">
+                //                 <label for="schedule_id">Corrected Schedule ID:</label><br>
+                //                 <input type="text" id="schedule_id" name="schedule_id" value=${sidewalk.schedule_id}><br>
+                                
+                //                 <label for="sidewalk_status">Sidewalk Status:</label>
+                //                 <select name="sidewalk_status" id="sidewalk_status">
+                //                     <option value="missing" ${sidewalk.status === 'missing' ? 'selected' : ''}>Missing</option>
+                //                     <option value="unresolved" ${sidewalk.status === 'unresolved' ? 'selected' : ''}>Unresolved</option>
+                //                     <option value="ok" ${sidewalk.status === 'ok' ? 'selected' : ''}>OK</option>
+                //                 </select>
+                //                 <button type="button" onclick="submitForm(${sidewalk.id})">Submit</button>
+                //             </form>
+                //         `;
+                //         layer.bindPopup(popupContent);
+                //     }
+                // }).addTo(map);
+
+                // Add the updated sidewalks to the GeoJSON layer
+                data.data.forEach(sidewalk => {
+                    // var featureLayer = sidewalkLayer.addData({
+                    //     type: "Feature",
+                    //     geometry: JSON.parse(sidewalk.geojson),
+                    //     properties: sidewalk
+                    // });
+                    // sidewalkFeatures[sidewalk.id] = featureLayer;
+                    drawFeature(sidewalk);
                 });
+                // sidewalkLayer.addData(data.data.map(sidewalk => ({
+                //     type: "Feature",
+                //     geometry: JSON.parse(sidewalk.geojson),
+                //     properties: sidewalk
+                // })));
             } catch (error) {
                 console.error('Error fetching sidewalks:', error);
             }
+        }
+
+        function refreshSidewalks() {
+            fetchSidewalks(); // Fetch and update sidewalks after a successful form submission
         }
 
         // Fetch and display the sidewalks when the page loads

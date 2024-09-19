@@ -85,6 +85,6 @@ for feature in output_geojson["features"]:
     del feature["properties"]["address"]
 
 
-with open('/Users/joey/Documents/sweepmaps/boston_sidewalks_geocoded.geojson', 'w') as outfile:
+with open('/Users/joey/Documents/sweepmaps/geojsons/boston_sidewalks_geocoded.geojson', 'w') as outfile:
     json.dump(output_geojson, outfile)
 
