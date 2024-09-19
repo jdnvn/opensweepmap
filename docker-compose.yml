@@ -1,6 +1,8 @@
 services:
   postgres:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
     environment:
       POSTGRES_USER: joey
       POSTGRES_PASSWORD: sweep
@@ -11,7 +13,9 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   server:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.server
     ports:
       - "5000:5000"
     depends_on:
