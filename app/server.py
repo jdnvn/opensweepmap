@@ -1,3 +1,4 @@
+import os
 from flask import Flask, jsonify, request, render_template
 from sqlalchemy import create_engine, text, MetaData, Table, update, func
 from sqlalchemy.orm import sessionmaker
@@ -8,21 +9,18 @@ from geoalchemy2.functions import ST_AsGeoJSON
 
 app = Flask(__name__)
 
-user = 'joey'
-password = 'sweep'
-host = 'localhost'
-port = '5432'
-database = 'sweepmaps'
+SERVER_PORT = os.environ.get('SERVER_PORT', 5001)
+SERVER_HOST = os.environ.get('SERVER_HOST')
+SERVER_URL = SERVER_HOST if SERVER_HOST else f"http://127.0.0.1:{SERVER_PORT}"
+DATABASE_URL = f'postgresql://joey:sweep@postgres:5432/sweepmaps'
 
-# Replace with your actual database URL
-DATABASE_URL = f'postgresql://{user}:{password}@{host}:{port}/{database}'
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 
 
 @app.route('/')
 def map_view():
-    return render_template('map.html')
+    return render_template('map.html', server_url=SERVER_URL)
 
 
 def get_next_sweeping_date(schedule):
@@ -159,6 +157,5 @@ def put_sidewalk(id):
     return jsonify(updated_sidewalk)
 
 
-
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=SERVER_PORT, debug=True)
