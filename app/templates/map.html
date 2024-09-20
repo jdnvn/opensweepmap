@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>opensweepmap</title>
     
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@2.1.0/dist/maplibre-gl.css" />
+    <script src="https://unpkg.com/maplibre-gl@2.1.0/dist/maplibre-gl.js"></script>
     
     <style>
         #map {
@@ -17,38 +17,155 @@
 </head>
 <body>
     
-    <div id="map"></div>
-    
+    <div id='map'></div>
+
     <script>
-        var serverUrl = "{{ server_url }}";
+        var serverUrl = '{{ server_url }}';
 
-        var map = L.map('map').setView([42.342999, -71.069216], 18);
+        var map = new maplibregl.Map({
+            container: 'map',
+            style: 'https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json',
+            center: [-71.069216, 42.342999],
+            zoom: 18
+        });
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(map);
+        map.on("load", () => {
+            // add the listingtile source from our FastAPI tile server
+            const sidewalksUrl = `${serverUrl}/sidewalks/tiles/{z}/{x}/{y}.mvt`;
+                map.addSource("sidewalks", {
+                type: "vector",
+                tiles: [sidewalksUrl],
+                minzoom: 8,
+                maxzoom: 24,
+            });
 
-        var sidewalkFeatures = {};
+            map.addLayer({
+                id: "sidewalks-layer",
+                type: "line",
+                source: "sidewalks",
+                "source-layer": "default",
+                paint: {
+                    'line-width': [
+                        'case',
+                        ['boolean', ['feature-state', 'highlighted'], false], 3,
+                        1
+                    ],
+                    'line-color': [
+                        'match', 
+                        ['get', 'status'],  // Get the status property
+                        'missing', '#00ffff',  // Color for missing
+                        'unresolved', '#FF0000',  // Color for unresolved
+                        'ok', '#327da8',  // Color for ok
+                        '#ff69b4'  // Default color
+                    ]
+                }
+            });
 
-        function sidewalkStyle(status) {
-            let color;
-            switch (status) {
-                case "unresolved":
-                    color = '#FF0000'; // Red for unresolved
-                    break;
-                case "missing":
-                    color = '#00ffff'; // Cyan for missing
-                    break;
-                case "ok":
-                default:
-                    color = '#327da8'; // Blue for ok
-                    break;
-            }
-            return {
-                color: color,
-                weight: 2,         // Bold line
-                opacity: 0.8       // Slight transparency
-            };
+            let highlightedSidewalkId = null;
+
+            map.on("click", "sidewalks-layer", (e) => {
+                console.log(e.features[0])
+                const sidewalkId = e.features[0].id;
+                const sidewalkData = e.features[0].properties;
+                if (highlightedSidewalkId) {
+                    map.setFeatureState(
+                        { source: 'sidewalks', sourceLayer: "default", id: highlightedSidewalkId },
+                        { highlighted: false }
+                    );
+                }
+                highlightedSidewalkId = sidewalkId;
+                map.setFeatureState(
+                    { source: 'sidewalks', sourceLayer: "default", id: sidewalkId },
+                    { highlighted: true }
+                );
+
+                const popHtml = getPopup(
+                    sidewalkId,
+                    sidewalkData.schedule_id,
+                    sidewalkData.status
+                );
+                const coordinates = e.lngLat;
+                new maplibregl.Popup({ offset: 25 })
+                    .setLngLat(coordinates)
+                    .setHTML(popHtml)
+                    .addTo(map);
+            });
+
+            map.on("click", (e) => {
+                const features = map.queryRenderedFeatures(e.point, {
+                    layers: ["sidewalks-layer"]
+                });
+
+                if (!features.length) {
+                    if (highlightedSidewalkId) {
+                        map.setFeatureState(
+                            { source: 'sidewalks', sourceLayer: "default", id: highlightedSidewalkId },
+                            { highlighted: false }
+                        );
+                        highlightedSidewalkId = null;
+                    }
+                }
+            });
+
+            const tooltip = new maplibregl.Popup({
+                closeButton: false,
+                closeOnClick: false
+            });
+
+            map.on("mousemove", "sidewalks-layer", (e) => {
+                // Get the feature under the mouse pointer
+                tooltip.remove();
+                if (e.features.length > 0) {
+                    const feature = e.features[0];
+
+                    // Get the feature properties for the tooltip content
+                    const scheduleId = feature.properties.schedule_id;
+                    const status = feature.properties.status;
+                    const streetName = feature.properties.street_name;
+                    const side = feature.properties.side;
+                    const fromStreet = feature.properties.from_street_name;
+                    const toStreet = feature.properties.to_street_name;
+
+                    // Construct tooltip content
+                    const tooltipContent = `
+                        <strong>Schedule ID:</strong> ${scheduleId}<br/>
+                        <strong>Status:</strong> ${status}<br/>
+                        <strong>Street:</strong> ${streetName} (${side})<br/>
+                        <strong>From:</strong> ${fromStreet}<br/>
+                        <strong>To:</strong> ${toStreet}
+                    `;
+
+                    // Set the popup at the mouse pointer's location
+                    tooltip
+                        .setLngLat(e.lngLat)
+                        .setHTML(tooltipContent)
+                        .addTo(map);
+                }
+            });
+
+            // Remove the popup when the mouse leaves the layer
+            map.on("mouseleave", "sidewalks-layer", () => {
+                tooltip.remove();
+                map.getCanvas().style.cursor = '';
+            });
+        });
+
+
+        function getPopup(id, schedule_id, status) {
+            return `
+                <form id="popupForm">
+                    <label for="schedule_id">Corrected Schedule ID:</label><br>
+                    <input type="text" id="schedule_id" name="schedule_id" value="${schedule_id}"><br>
+                    
+                    <label for="sidewalk_status">Sidewalk Status:</label>
+                    <select name="sidewalk_status" id="sidewalk_status">
+                        <option value="missing" ${status === 'missing' ? 'selected' : ''}>Missing</option>
+                        <option value="unresolved" ${status === 'unresolved' ? 'selected' : ''}>Unresolved</option>
+                        <option value="ok" ${status === 'ok' ? 'selected' : ''}>OK</option>
+                    </select>
+                    <button type="button" onclick="submitForm(${id})">Submit</button>
+                </form>
+            `;
         }
 
         function submitForm(sidewalkId) {
@@ -73,62 +190,12 @@
             })
             .then(data => {
                 console.log('Success:', data);
-                drawFeature(data);
+                // drawFeature(data);
             })
             .catch(error => {
                 console.error('Error:', error);
             });
         }
-
-        function drawFeature(sidewalkData) {
-            if (sidewalkFeatures[sidewalkData.id]) {
-                map.removeLayer(sidewalkFeatures[sidewalkData.id]);
-            }
-            var featureLayer = L.geoJSON(JSON.parse(sidewalkData.geojson), {
-                style: sidewalkStyle(sidewalkData.status),
-                onEachFeature: function (feature, layer) {
-                    const tooltipContent = `ID: ${sidewalkData.id} Schedule ID: ${sidewalkData.schedule_id} Street: ${sidewalkData.street_name} ${sidewalkData.side} Side. From ${sidewalkData.from_street_name} To ${sidewalkData.to_street_name}`;
-                    
-                    layer.bindTooltip(tooltipContent, { permanent: false, direction: 'top' });
-                    
-                    var popupContent = `
-                        <form id="popupForm">
-                            <label for="schedule_id">Corrected Schedule ID:</label><br>
-                            <input type="text" id="schedule_id" name="schedule_id" value=${sidewalkData.schedule_id}><br>
-                            
-                            <label for="sidewalk_status">Sidewalk Status:</label>
-                            <select name="sidewalk_status" id="sidewalk_status">
-                                <option value="missing" ${sidewalkData.status === 'missing' ? 'selected' : ''}>Missing</option>
-                                <option value="unresolved" ${sidewalkData.status === 'unresolved' ? 'selected' : ''}>Unresolved</option>
-                                <option value="ok" ${sidewalkData.status === 'ok' ? 'selected' : ''}>OK</option>
-                            </select>
-                            <button type="button" onclick="submitForm(${sidewalkData.id})">Submit</button>
-                        </form>
-                    `;
-                    layer.bindPopup(popupContent);
-                }
-            }).addTo(map);
-            sidewalkFeatures[sidewalkData.id] = featureLayer;
-        }
-
-        async function fetchSidewalks() {
-            try {
-                const response = await fetch(`${serverUrl}/sidewalks`);
-                const data = await response.json();
-
-                data.data.forEach(sidewalk => {
-                    drawFeature(sidewalk);
-                });
-            } catch (error) {
-                console.error('Error fetching sidewalks:', error);
-            }
-        }
-
-        function refreshSidewalks() {
-            fetchSidewalks();
-        }
-
-        fetchSidewalks();
     </script>
     
 </body>
