@@ -65,7 +65,7 @@ async def get_sidewalks_tiles_bytes(
         )
         .select_from(Sidewalk)
         .join(tile_bounds_cte, literal(True))
-        .join(Schedule, Sidewalk.schedule_id == Schedule.id)
+        .outerjoin(Schedule, Sidewalk.schedule_id == Schedule.id)
         .filter(
             ST_Intersects(Sidewalk.geometry, tile_bounds_cte.c.geom_4326)
         )

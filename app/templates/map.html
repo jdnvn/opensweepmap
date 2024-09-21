@@ -21,6 +21,7 @@
 
     <script>
         var serverUrl = '{{ server_url }}';
+        const sidewalksUrl = `${serverUrl}/sidewalks/tiles/{z}/{x}/{y}.mvt`;
 
         var map = new maplibregl.Map({
             container: 'map',
@@ -31,8 +32,7 @@
 
         map.on("load", () => {
             // add the listingtile source from our FastAPI tile server
-            const sidewalksUrl = `${serverUrl}/sidewalks/tiles/{z}/{x}/{y}.mvt`;
-                map.addSource("sidewalks", {
+            map.addSource("sidewalks", {
                 type: "vector",
                 tiles: [sidewalksUrl],
                 minzoom: 8,
@@ -47,8 +47,8 @@
                 paint: {
                     'line-width': [
                         'case',
-                        ['boolean', ['feature-state', 'highlighted'], false], 3,
-                        1
+                        ['boolean', ['feature-state', 'highlighted'], false], 5,
+                        2
                     ],
                     'line-color': [
                         'match', 
@@ -92,6 +92,7 @@
             });
 
             map.on("click", (e) => {
+                tooltip.remove();
                 const features = map.queryRenderedFeatures(e.point, {
                     layers: ["sidewalks-layer"]
                 });
@@ -113,7 +114,7 @@
             });
 
             map.on("mousemove", "sidewalks-layer", (e) => {
-                // Get the feature under the mouse pointer
+                map.getCanvas().style.cursor = 'pointer';
                 tooltip.remove();
                 if (e.features.length > 0) {
                     const feature = e.features[0];
@@ -189,8 +190,15 @@
                 return response.json();
             })
             .then(data => {
-                console.log('Success:', data);
-                // drawFeature(data);
+                console.log('Success:', data.data);
+                console.log(data.data.id)
+                const features = map.querySourceFeatures('sidewalks', {
+                    sourceLayer: 'default',
+                    filter: ["==", ["get", "id"], 40847]  // Ensure correct feature ID is used
+                });
+                // TODO: workaround to fetch new tiles on update
+                // eventually want make it update (probably with websockets) on every client's map
+                map.getSource('sidewalks').setTiles([sidewalksUrl]);
             })
             .catch(error => {
                 console.error('Error:', error);
