@@ -1,5 +1,6 @@
+from typing import Any
 from sqlalchemy import Column, Integer, String, Time, Boolean, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 from geoalchemy2 import Geometry
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -37,11 +38,20 @@ class Schedule(Base):
     year_round = Column(Boolean)
     north_end_pilot = Column(Boolean)
 
+
 class Sidewalk(Base):
     __tablename__ = 'sidewalks'
 
     id = Column(Integer, primary_key=True)
     schedule_id = Column(Integer, ForeignKey('schedules.id'))
     status = Column(String)
-    geometry = Column(Geometry('LINESTRING'))
+    geometry: Mapped[Any] = mapped_column(
+        Geometry(
+            "LINESTRING",  # Change from POINT to LINESTRING
+            srid=4326,
+            spatial_index=False,
+            name="geometry",
+        ),
+        nullable=False,
+    )
     schedule = relationship("Schedule", backref="sidewalks")
