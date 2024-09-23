@@ -28,7 +28,7 @@ async def get_sidewalks_tiles_bytes(
     y: int,
 ) -> bytes | None:
     query = text("""
-        WITH RECURSIVE next_sweep_day AS (
+    WITH RECURSIVE next_sweep_day AS (
         SELECT
             CURRENT_DATE::timestamp AS day
         UNION ALL
@@ -55,11 +55,11 @@ async def get_sidewalks_tiles_bytes(
             END AS valid_day,
             CASE
                 WHEN s.every_day THEN TRUE
-                WHEN to_char(current_date, 'W')::integer = 1 AND s.week_1 THEN TRUE
-                WHEN to_char(current_date, 'W')::integer = 2 AND s.week_2 THEN TRUE
-                WHEN to_char(current_date, 'W')::integer = 3 AND s.week_3 THEN TRUE
-                WHEN to_char(current_date, 'W')::integer = 4 AND s.week_4 THEN TRUE
-                WHEN to_char(current_date, 'W')::integer = 5 AND s.week_5 THEN TRUE
+                WHEN to_char(nsd.day, 'W')::integer = 1 AND s.week_1 THEN TRUE
+                WHEN to_char(nsd.day, 'W')::integer = 2 AND s.week_2 THEN TRUE
+                WHEN to_char(nsd.day, 'W')::integer = 3 AND s.week_3 THEN TRUE
+                WHEN to_char(nsd.day, 'W')::integer = 4 AND s.week_4 THEN TRUE
+                WHEN to_char(nsd.day, 'W')::integer = 5 AND s.week_5 THEN TRUE
                 ELSE FALSE
             END AS valid_week,
             nsd.day
@@ -121,7 +121,8 @@ async def get_sidewalks_tiles_bytes(
             schedules.every_day,
             schedules.year_round,
             schedules.north_end_pilot,
-            next_sweep_times.next_sweep_at
+            next_sweep_times.next_sweep_at,
+            FLOOR((EXTRACT(EPOCH FROM next_sweep_times.next_sweep_at) - EXTRACT(EPOCH FROM CURRENT_DATE::timestamp))/3600) as hours_to_next_sweep
         FROM
             sidewalks
         JOIN

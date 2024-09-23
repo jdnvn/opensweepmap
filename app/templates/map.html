@@ -7,11 +7,82 @@
     
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@2.1.0/dist/maplibre-gl.css" />
     <script src="https://unpkg.com/maplibre-gl@2.1.0/dist/maplibre-gl.js"></script>
-    
+    <div class="map-overlay">
+        <label class="switch">
+            <input type="checkbox" id="toggleMode">
+            <span class="slider round"></span>
+        </label>
+        <span id="modeLabel">Normal Mode</span>
+    </div>
     <style>
         #map {
             height: 100vh;
             width: 100%;
+        }
+        .map-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1;
+            font-family: Arial, sans-serif;
+            display: flex;
+            align-items: center;
+        }
+
+        /* Slider switch styling */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+            margin-right: 10px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 4px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #2196F3;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        /* Label styling */
+        #modeLabel {
+            font-size: 14px;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -22,6 +93,8 @@
     <script>
         var serverUrl = '{{ server_url }}';
         const sidewalksUrl = `${serverUrl}/sidewalks/tiles/{z}/{x}/{y}.mvt`;
+        let isEditMode = false;
+        let highlightedSidewalkId = null;
 
         var map = new maplibregl.Map({
             container: 'map',
@@ -30,8 +103,39 @@
             zoom: 18
         });
 
+        function toggleMode() {
+            isEditMode = !isEditMode;
+
+            const modeLabel = document.getElementById('modeLabel');
+            modeLabel.innerText = isEditMode ? "Edit Mode" : "Normal Mode";
+
+            if (isEditMode) {
+                map.setPaintProperty('sidewalks-layer', 'line-color', [
+                    'match', 
+                    ['get', 'status'],
+                    'missing', '#00ffff',  // cyan for missing
+                    'unresolved', '#FF0000',  // red for unresolved
+                    'ok', '#327da8',  // blue for ok
+                ]);
+            } else {
+                map.setPaintProperty('sidewalks-layer', 'line-color', [
+                    'interpolate',
+                    ['linear'],
+                    ['to-number', ['coalesce', ['get', 'hours_to_next_sweep'], -1]],
+                    -1, '#000000', // black if no data
+                    12, '#FF0000',  // red for immediate sweep
+                    24, '#FFA500',  // orange for sweep in next 24 hours
+                    36, '#FFFF00',  // yellow for sweep in next 36 hours
+                    48, '#008000',  // green for sweep in next 2 days
+                ]);
+            }
+        }
+
+        // Attach the toggle function to the slider switch
+        document.getElementById('toggleMode').addEventListener('change', toggleMode);
+
         map.on("load", () => {
-            // add the listingtile source from our FastAPI tile server
+            // add the listingtile source from FastAPI tile server
             map.addSource("sidewalks", {
                 type: "vector",
                 tiles: [sidewalksUrl],
@@ -51,17 +155,17 @@
                         2
                     ],
                     'line-color': [
-                        'match', 
-                        ['get', 'status'],  // Get the status property
-                        'missing', '#00ffff',  // Color for missing
-                        'unresolved', '#FF0000',  // Color for unresolved
-                        'ok', '#327da8',  // Color for ok
-                        '#ff69b4'  // Default color
+                        'interpolate',
+                        ['linear'],
+                        ['to-number', ['coalesce', ['get', 'hours_to_next_sweep'], -1]],
+                        -1, '#000000',
+                        12, '#FF0000',
+                        24, '#FFA500',
+                        36, '#FFFF00',
+                        48, '#008000',
                     ]
                 }
             });
-
-            let highlightedSidewalkId = null;
 
             map.on("click", "sidewalks-layer", (e) => {
                 console.log(e.features[0])
@@ -79,15 +183,20 @@
                     { highlighted: true }
                 );
 
-                const popHtml = getPopup(
-                    sidewalkId,
-                    sidewalkData.schedule_id,
-                    sidewalkData.status
-                );
+                var popupHtml = null;
+                if (isEditMode) {
+                    popupHtml = getEditPopup(
+                        sidewalkId,
+                        sidewalkData.schedule_id,
+                        sidewalkData.status
+                    );
+                } else {
+                    popupHtml = getInfoPopup(sidewalkData);
+                }
                 const coordinates = e.lngLat;
                 new maplibregl.Popup({ offset: 25 })
                     .setLngLat(coordinates)
-                    .setHTML(popHtml)
+                    .setHTML(popupHtml)
                     .addTo(map);
             });
 
@@ -119,7 +228,6 @@
                 if (e.features.length > 0) {
                     const feature = e.features[0];
 
-                    // Get the feature properties for the tooltip content
                     const scheduleId = feature.properties.schedule_id;
                     const status = feature.properties.status;
                     const streetName = feature.properties.street_name;
@@ -127,16 +235,24 @@
                     const fromStreet = feature.properties.from_street_name;
                     const toStreet = feature.properties.to_street_name;
 
-                    // Construct tooltip content
-                    const tooltipContent = `
-                        <strong>Schedule ID:</strong> ${scheduleId}<br/>
-                        <strong>Status:</strong> ${status}<br/>
+                    var tooltipContent = "";
+                    if (isEditMode) {
+                        tooltipContent += `
+                            <strong>Schedule ID:</strong> ${scheduleId}<br/>
+                            <strong>Status:</strong> ${status}<br/>
+                        `;
+                    }
+                    tooltipContent += `
                         <strong>Street:</strong> ${streetName} (${side})<br/>
                         <strong>From:</strong> ${fromStreet}<br/>
-                        <strong>To:</strong> ${toStreet}
+                        <strong>To:</strong> ${toStreet}<br/>
                     `;
+                    if (!isEditMode) {
+                        tooltipContent += `
+                            <strong>Next Sweep At:</strong> ${feature.properties.next_sweep_at}<br/>
+                        `;
+                    }
 
-                    // Set the popup at the mouse pointer's location
                     tooltip
                         .setLngLat(e.lngLat)
                         .setHTML(tooltipContent)
@@ -152,7 +268,7 @@
         });
 
 
-        function getPopup(id, schedule_id, status) {
+        function getEditPopup(id, schedule_id, status) {
             return `
                 <form id="popupForm">
                     <label for="schedule_id">Corrected Schedule ID:</label><br>
@@ -166,6 +282,17 @@
                     </select>
                     <button type="button" onclick="submitForm(${id})">Submit</button>
                 </form>
+            `;
+        }
+
+        function getInfoPopup(sidewalkData) {
+            return `
+                <div id="popupInfo">
+                    <strong>Street:</strong> ${sidewalkData.street_name} (${sidewalkData.side} side)<br/>
+                    <strong>From:</strong> ${sidewalkData.from_street_name}<br/>
+                    <strong>To:</strong> ${sidewalkData.to_street_name}<br/>
+                    <strong>Next Sweep At:</strong> ${sidewalkData.next_sweep_at}<br/>
+                </div>
             `;
         }
 
@@ -191,11 +318,6 @@
             })
             .then(data => {
                 console.log('Success:', data.data);
-                console.log(data.data.id)
-                const features = map.querySourceFeatures('sidewalks', {
-                    sourceLayer: 'default',
-                    filter: ["==", ["get", "id"], 40847]  // Ensure correct feature ID is used
-                });
                 // TODO: workaround to fetch new tiles on update
                 // eventually want make it update (probably with websockets) on every client's map
                 map.getSource('sidewalks').setTiles([sidewalksUrl]);
