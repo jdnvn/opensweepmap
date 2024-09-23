@@ -8,10 +8,12 @@ from geoalchemy2.functions import (
     ST_TileEnvelope,
     ST_Transform,
 )
-from sqlalchemy import and_, select, text, update
+from sqlalchemy import and_, select, text, update, func, case, DateTime, cast
+from sqlalchemy.types import TIMESTAMP
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.expression import literal
 from models import Sidewalk, Schedule
+from datetime import datetime, timedelta
+
 
 
 @cached(
@@ -25,55 +27,119 @@ async def get_sidewalks_tiles_bytes(
     x: int,
     y: int,
 ) -> bytes | None:
-    tile_bounds_cte = select(
-        ST_TileEnvelope(z, x, y).label("geom_3857"),
-        ST_Transform(ST_TileEnvelope(z, x, y), 4326).label("geom_4326"),
-    ).cte("tile_bounds_cte")
-
-    mvt_table_cte = (
-        select(
+    query = text("""
+        WITH RECURSIVE next_sweep_day AS (
+        SELECT
+            CURRENT_DATE::timestamp AS day
+        UNION ALL
+        SELECT
+            day + INTERVAL '1 day'
+        FROM next_sweep_day
+        WHERE day < CURRENT_DATE::timestamp + INTERVAL '60 days' -- Max lookahead of 6 weeks
+    ),
+    next_sweep_schedule AS (
+        SELECT
+            s.id,
+            s.start_time,
+            s.end_time,
+            CASE
+                WHEN s.every_day THEN TRUE
+                WHEN EXTRACT(DOW FROM nsd.day) = 0 AND s.sunday THEN TRUE
+                WHEN EXTRACT(DOW FROM nsd.day) = 1 AND s.monday THEN TRUE
+                WHEN EXTRACT(DOW FROM nsd.day) = 2 AND s.tuesday THEN TRUE
+                WHEN EXTRACT(DOW FROM nsd.day) = 3 AND s.wednesday THEN TRUE
+                WHEN EXTRACT(DOW FROM nsd.day) = 4 AND s.thursday THEN TRUE
+                WHEN EXTRACT(DOW FROM nsd.day) = 5 AND s.friday THEN TRUE
+                WHEN EXTRACT(DOW FROM nsd.day) = 6 AND s.saturday THEN TRUE
+                ELSE FALSE
+            END AS valid_day,
+            CASE
+                WHEN s.every_day THEN TRUE
+                WHEN to_char(current_date, 'W')::integer = 1 AND s.week_1 THEN TRUE
+                WHEN to_char(current_date, 'W')::integer = 2 AND s.week_2 THEN TRUE
+                WHEN to_char(current_date, 'W')::integer = 3 AND s.week_3 THEN TRUE
+                WHEN to_char(current_date, 'W')::integer = 4 AND s.week_4 THEN TRUE
+                WHEN to_char(current_date, 'W')::integer = 5 AND s.week_5 THEN TRUE
+                ELSE FALSE
+            END AS valid_week,
+            nsd.day
+        FROM
+            schedules s
+        CROSS JOIN
+            next_sweep_day nsd
+    ),
+    next_sweep_times AS (
+        SELECT DISTINCT ON (s.id)
+            s.id,
+            nsd.day + s.start_time::interval AS next_sweep_at
+        FROM
+            next_sweep_schedule nsd
+        JOIN
+            schedules s ON s.id = nsd.id
+        WHERE
+            nsd.valid_day = TRUE
+            AND nsd.valid_week = TRUE
+        ORDER BY
+            s.id,
+            nsd.day ASC
+    ),
+    tile_bounds_cte AS (
+        SELECT
+            ST_TileEnvelope(:z, :x, :y) AS geom_3857,
+            ST_Transform(ST_TileEnvelope(:z, :x, :y), 4326) AS geom_4326
+    ),
+    mvt_table_cte AS (
+        SELECT
             ST_AsMVTGeom(
-                ST_Transform(Sidewalk.geometry, 3857), tile_bounds_cte.c.geom_3857
-            ).label("geom"),
-            Sidewalk.id,
-            Sidewalk.schedule_id,
-            Sidewalk.status,
-            Schedule.street_name,
-            Schedule.suburb_name,
-            Schedule.side,
-            Schedule.start_time,
-            Schedule.end_time,
-            Schedule.from_street_name,
-            Schedule.to_street_name,
-            Schedule.has_duplicates,
-            Schedule.one_way,
-            Schedule.week_1,
-            Schedule.week_2,
-            Schedule.week_3,
-            Schedule.week_4,
-            Schedule.week_5,
-            Schedule.sunday,
-            Schedule.monday,
-            Schedule.tuesday,
-            Schedule.wednesday,
-            Schedule.thursday,
-            Schedule.friday,
-            Schedule.saturday,
-            Schedule.every_day,
-            Schedule.year_round,
-            Schedule.north_end_pilot
-        )
-        .select_from(Sidewalk)
-        .join(tile_bounds_cte, literal(True))
-        .outerjoin(Schedule, Sidewalk.schedule_id == Schedule.id)
-        .filter(
-            ST_Intersects(Sidewalk.geometry, tile_bounds_cte.c.geom_4326)
-        )
+                ST_Transform(sidewalks.geometry, 3857), 
+                tile_bounds_cte.geom_3857
+            ) AS geom,
+            sidewalks.id,
+            sidewalks.schedule_id,
+            sidewalks.status,
+            schedules.street_name,
+            schedules.suburb_name,
+            schedules.side,
+            schedules.start_time,
+            schedules.end_time,
+            schedules.from_street_name,
+            schedules.to_street_name,
+            schedules.has_duplicates,
+            schedules.one_way,
+            schedules.week_1,
+            schedules.week_2,
+            schedules.week_3,
+            schedules.week_4,
+            schedules.week_5,
+            schedules.sunday,
+            schedules.monday,
+            schedules.tuesday,
+            schedules.wednesday,
+            schedules.thursday,
+            schedules.friday,
+            schedules.saturday,
+            schedules.every_day,
+            schedules.year_round,
+            schedules.north_end_pilot,
+            next_sweep_times.next_sweep_at
+        FROM
+            sidewalks
+        JOIN
+            tile_bounds_cte ON TRUE
+        LEFT JOIN
+            schedules ON sidewalks.schedule_id = schedules.id
+        LEFT JOIN
+            next_sweep_times ON schedules.id = next_sweep_times.id
+        WHERE
+            ST_Intersects(sidewalks.geometry, tile_bounds_cte.geom_4326)
     )
+    SELECT 
+        ST_AsMVT(mvt_table_cte.*, 'default', 4096, 'geom', 'id') 
+    FROM 
+        mvt_table_cte;
+    """)
 
-    mvt_table_cte = mvt_table_cte.cte("mvt_table_cte")
-    stmt = select(ST_AsMVT(text("mvt_table_cte.*"), 'default', 4096, 'geom', 'id')).select_from(mvt_table_cte)
-    result = await session.execute(stmt)
+    result = await session.execute(query, {"z": z, "x": x, "y": y})
     return result.scalar()
 
 
