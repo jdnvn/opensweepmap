@@ -67,11 +67,14 @@ async def get_sidewalks_tiles_bytes(
             schedules s
         CROSS JOIN
             next_sweep_day nsd
+        WHERE
+            (nsd.day > CURRENT_DATE::timestamp
+            OR (s.start_time::time > CURRENT_TIME))
     ),
     next_sweep_times AS (
         SELECT DISTINCT ON (s.id)
             s.id,
-            nsd.day + s.start_time::interval AS next_sweep_at
+            nsd.day::date AS next_sweep_at
         FROM
             next_sweep_schedule nsd
         JOIN
@@ -122,7 +125,7 @@ async def get_sidewalks_tiles_bytes(
             schedules.year_round,
             schedules.north_end_pilot,
             next_sweep_times.next_sweep_at,
-            FLOOR((EXTRACT(EPOCH FROM next_sweep_times.next_sweep_at) - EXTRACT(EPOCH FROM CURRENT_DATE::timestamp))/3600) as hours_to_next_sweep
+            FLOOR((EXTRACT(EPOCH FROM next_sweep_times.next_sweep_at + s.start_time::interval) - EXTRACT(EPOCH FROM CURRENT_DATE::timestamp))/3600) as hours_to_next_sweep
         FROM
             sidewalks
         JOIN

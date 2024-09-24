@@ -96,6 +96,20 @@
         let isEditMode = false;
         let highlightedSidewalkId = null;
 
+        const timeOptions = {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        };
+
+        const fullDateOptions = {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            ...timeOptions,
+        };
+
         var map = new maplibregl.Map({
             container: 'map',
             style: 'https://api.maptiler.com/maps/5a2d1bdc-0430-4aac-898b-ef3a7a500b73/style.json?key=SLnm1JNOPIPyy6cm6NrF',
@@ -116,6 +130,7 @@
                     'missing', '#00ffff',  // cyan for missing
                     'unresolved', '#FF0000',  // red for unresolved
                     'ok', '#327da8',  // blue for ok
+                    '#000000'
                 ]);
             } else {
                 map.setPaintProperty('sidewalks-layer', 'line-color', [
@@ -130,6 +145,16 @@
                 ]);
             }
         }
+
+        const getFormattedSweepTimes = (nextSweepDate, startTime, endTime) => {
+            const nextSweepStart = new Date(`${nextSweepDate} ${startTime}`);
+            const nextSweepEnd = new Date(`${nextSweepDate} ${endTime}`);
+            const isSameDay = nextSweepStart.getDate() == nextSweepEnd.getDate();
+            const nextSweepStartFormatted = nextSweepStart.toLocaleDateString('en-us', fullDateOptions);
+            const nextSweepEndFormatted = isSameDay ? nextSweepEnd.toLocaleTimeString('en-us', timeOptions) : nextSweepEnd.toLocaleDateString('en-us', fullDateOptions);
+
+            return [nextSweepStartFormatted, nextSweepEndFormatted];
+        };
 
         // Attach the toggle function to the slider switch
         document.getElementById('toggleMode').addEventListener('change', toggleMode);
@@ -243,13 +268,15 @@
                         `;
                     }
                     tooltipContent += `
-                        <strong>Street:</strong> ${streetName} (${side})<br/>
+                        <strong>Street:</strong> ${streetName} (${side} side)<br/>
                         <strong>From:</strong> ${fromStreet}<br/>
                         <strong>To:</strong> ${toStreet}<br/>
                     `;
                     if (!isEditMode) {
+                        const [nextSweepStart, nextSweepEnd] = getFormattedSweepTimes(feature.properties.next_sweep_at, feature.properties.start_time, feature.properties.end_time);
+
                         tooltipContent += `
-                            <strong>Next Sweep At:</strong> ${feature.properties.next_sweep_at}<br/>
+                            <strong>Next:</strong> ${nextSweepStart} to ${nextSweepEnd}<br/>
                         `;
                     }
 
@@ -286,12 +313,13 @@
         }
 
         function getInfoPopup(sidewalkData) {
+            const [nextSweepStart, nextSweepEnd] = getFormattedSweepTimes(sidewalkData.next_sweep_at, sidewalkData.start_time, sidewalkData.end_time);
             return `
                 <div id="popupInfo">
                     <strong>Street:</strong> ${sidewalkData.street_name} (${sidewalkData.side} side)<br/>
                     <strong>From:</strong> ${sidewalkData.from_street_name}<br/>
                     <strong>To:</strong> ${sidewalkData.to_street_name}<br/>
-                    <strong>Next Sweep At:</strong> ${sidewalkData.next_sweep_at}<br/>
+                    <strong>Next:</strong> ${nextSweepStart} to ${nextSweepEnd}<br/>
                 </div>
             `;
         }
