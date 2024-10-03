@@ -223,6 +223,10 @@
             showUserHeading: true
         });
 
+        geolocate.on('error', function(e) {
+            console.log(`geolocation error ${e}`);
+        });
+
         map.addControl(geolocate);
 
         function setEditMode() {
