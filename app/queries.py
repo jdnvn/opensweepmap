@@ -11,7 +11,7 @@ from geoalchemy2.functions import (
 from sqlalchemy import and_, select, text, update, func, case, DateTime, cast
 from sqlalchemy.types import TIMESTAMP
 from sqlalchemy.ext.asyncio import AsyncSession
-from models import Sidewalk, Schedule, User
+from models import Sidewalk, Schedule, User, SidewalkAdjustment
 from datetime import datetime, timedelta
 
 @cached(
@@ -151,7 +151,7 @@ async def get_sidewalks_tiles_bytes(
     serializer=PickleSerializer(),
 )
 async def get_sidewalk_by_id(
-    id: str,
+    id: int,
     session: AsyncSession
 ) -> Dict:
     query = (
@@ -185,7 +185,7 @@ async def get_sidewalk_by_id(
             Schedule.north_end_pilot
         )
         .outerjoin(Schedule, Sidewalk.schedule_id == Schedule.id)
-        .where(Sidewalk.id == int(id))
+        .where(Sidewalk.id == id)
     )
 
     result = await session.execute(query)
@@ -222,3 +222,18 @@ async def create_user(username: str, email: str, hashed_password: str, session: 
     await session.refresh(new_user)
 
     return new_user
+
+
+async def create_sidewalk_adjustment(sidewalk_id: int, schedule_id: int, status: str, user_id: int, session: AsyncSession) -> Dict:
+    new_adjustment = SidewalkAdjustment(
+        user_id=user_id,
+        sidewalk_id=sidewalk_id,
+        schedule_id=schedule_id,
+        status=status
+    )
+
+    session.add(new_adjustment)
+    await session.commit()
+    await session.refresh(new_adjustment)
+
+    return new_adjustment

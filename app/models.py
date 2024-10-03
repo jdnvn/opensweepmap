@@ -77,3 +77,13 @@ class User(BaseModel):
         user_dict = super().as_dict()
         user_dict.pop('hashed_password', None)
         return user_dict
+
+
+class SidewalkAdjustment(BaseModel):
+    __tablename__ = 'sidewalk_adjustments'
+
+    id = Column(Integer, primary_key=True)
+    sidewalk_id = Column(Integer, ForeignKey('sidewalks.id'))
+    schedule_id = Column(Integer, ForeignKey('schedules.id'))
+    user_id = Column(Integer, ForeignKey('users.id'))
+    status = Column(String)
