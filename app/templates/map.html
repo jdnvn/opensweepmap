@@ -213,6 +213,18 @@
             zoom: 18
         });
 
+
+        var geolocate = new maplibregl.GeolocateControl({
+            positionOptions: {
+                enableHighAccuracy: true
+            },
+            fitBoundsOptions: {linear: true, maxZoom: map.getZoom()},
+            trackUserLocation: true,
+            showUserHeading: true
+        });
+
+        map.addControl(geolocate);
+
         function setEditMode() {
             const modeLabel = document.getElementById('modeLabel');
             modeLabel.innerText = "Edit Mode";
@@ -267,13 +279,16 @@
         // Attach the toggle function to the slider switch
         document.getElementById('toggleMode').addEventListener('change', toggleMode);
 
+        var userCoords;
+
         map.on("load", () => {
+            geolocate.trigger();
             // add the tile source from FastAPI tile server
             map.addSource("sidewalks", {
                 type: "vector",
                 tiles: [sidewalksUrl],
                 minzoom: 8,
-                maxzoom: 24,
+                maxzoom: 15,
             });
 
             // enable highlighting of sidewalks
