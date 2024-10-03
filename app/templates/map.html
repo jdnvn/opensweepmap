@@ -224,7 +224,7 @@
         });
 
         geolocate.on('error', function(e) {
-            console.log(`geolocation error ${e.error}`);
+            console.log(`geolocation error ${e.message}`);
         });
 
         map.addControl(geolocate);
