@@ -2,7 +2,7 @@
 FROM postgres:16
 
 # Install PostGIS
-RUN apt-get update && apt-get install -y postgis postgresql-16-postgis-3
+RUN apt-get update && apt-get install -y postgresql-16-postgis-3
 
 # Add initialization scripts (if needed)
 # COPY init-db.sh /docker-entrypoint-initdb.d/
