@@ -1,5 +1,5 @@
 # Use the official PostgreSQL image as the base image
-FROM postgres
+FROM postgres:16
 
 # Install PostGIS
 RUN apt-get update && apt-get install -y postgis
