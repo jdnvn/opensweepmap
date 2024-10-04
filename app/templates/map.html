@@ -310,10 +310,22 @@
                 }
             });
 
+            // enable highlighting of sidewalks
+            map.addLayer({
+                id: "sidewalks-layer-click",
+                type: "line",
+                source: "sidewalks",
+                "source-layer": "default",
+                paint: {
+                    'line-color': 'transparent',
+                    'line-width': 20
+                }
+            });
+
             // set the default mode
             setNormalMode();
 
-            map.on("click", "sidewalks-layer", (e) => {
+            map.on("click", "sidewalks-layer-click", (e) => {
                 console.log(e.features[0])
                 const sidewalkId = e.features[0].id;
                 const sidewalkData = e.features[0].properties;
@@ -350,7 +362,7 @@
             map.on("click", (e) => {
                 tooltip.remove();
                 const features = map.queryRenderedFeatures(e.point, {
-                    layers: ["sidewalks-layer"]
+                    layers: ["sidewalks-layer-click"]
                 });
 
                 if (!features.length) {
@@ -370,7 +382,7 @@
                 offset: 10,
             });
 
-            map.on("mousemove", "sidewalks-layer", (e) => {
+            map.on("mousemove", "sidewalks-layer-click", (e) => {
                 map.getCanvas().style.cursor = 'pointer';
                 tooltip.remove();
                 if (e.features.length > 0) {
@@ -411,7 +423,7 @@
             });
 
             // Remove the popup when the mouse leaves the layer
-            map.on("mouseleave", "sidewalks-layer", () => {
+            map.on("mouseleave", "sidewalks-layer-click", () => {
                 tooltip.remove();
                 map.getCanvas().style.cursor = '';
             });
