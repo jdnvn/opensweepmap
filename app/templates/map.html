@@ -3,11 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>opensweepmap</title>
+    <title>sweepmaps</title>
     
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@2.1.0/dist/maplibre-gl.css" />
     <script src="https://unpkg.com/maplibre-gl@2.1.0/dist/maplibre-gl.js"></script>
-    <div class="map-overlay">
+    
+    <button id="loginButton" class="auth-button">Log in</button>
+    <button id="logoutButton" class="auth-button">Log out</button>
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div class="modal-body">
+                <form id="loginForm">
+                    <div class="input-group">
+                        <label for="username">Username:</label>
+                        <input type="text" id="username" name="username">
+                    </div>
+                    <div class="input-group">
+                        <label for="password">Password:</label>
+                        <input type="password" id="password" name="password">
+                    </div>
+                    <input type="submit" value="Log in">
+                </form>
+                <!-- <button id="registerButton">Register</button> -->
+            </div>
+        </div>
+    </div>
+    <div class="authed-overlay" id="authedOverlay">
         <label class="switch">
             <input type="checkbox" id="toggleMode">
             <span class="slider round"></span>
@@ -19,7 +41,7 @@
             height: 100vh;
             width: 100%;
         }
-        .map-overlay {
+        .authed-overlay {
             position: absolute;
             top: 10px;
             left: 10px;
@@ -28,7 +50,7 @@
             border-radius: 5px;
             z-index: 1;
             font-family: Arial, sans-serif;
-            display: flex;
+            display: none;
             align-items: center;
         }
 
@@ -84,6 +106,79 @@
             font-size: 14px;
             font-weight: bold;
         }
+
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 2; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgb(0,0,0); /* Fallback color */
+            background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+            text-align: center;
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            padding: 20px;
+            border: 1px solid #888;
+            max-width: 600px; /* Maximum width */
+            width: 60%; /* Responsive width */
+            position: fixed; /* Make the modal float above the map */
+            top: 50%; /* Center the modal vertically */
+            left: 50%; /* Center the modal horizontally */
+            transform: translate(-50%, -50%); /* Correct the modal position */
+        }
+
+        .modal-body {
+            margin-top: 20px;
+            display: flex; /* Use Flexbox */
+            flex-direction: column; /* Stack the children vertically */
+            justify-content: center; /* Center the children vertically */
+            align-items: center; /* Center the children horizontally */
+        }
+
+        .input-group {
+            display: flex; /* Use Flexbox */
+            justify-content: space-between; /* Space out the children */
+            align-items: center; /* Center the children vertically */
+            margin-bottom: 10px; /* Add some space below each group */
+        }
+
+        .input-group label {
+            margin-right: 10px; /* Add some space to the right of the label */
+        }
+
+        .close {
+            color: #aaa;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .auth-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1;
+            font-family: Arial, sans-serif;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -91,6 +186,7 @@
     <div id='map'></div>
 
     <script>
+        var authTokenKey = "SM_TOKEN";
         var serverUrl = '{{ server_url }}';
         const sidewalksUrl = `${serverUrl}/sidewalks/tiles/{z}/{x}/{y}.mvt`;
         let isEditMode = false;
@@ -117,32 +213,60 @@
             zoom: 18
         });
 
+
+        var geolocate = new maplibregl.GeolocateControl({
+            positionOptions: {
+                enableHighAccuracy: true
+            },
+            fitBoundsOptions: {linear: true, maxZoom: map.getZoom()},
+            trackUserLocation: true,
+            showUserHeading: true
+        });
+
+        geolocate.on('error', function(e) {
+            console.log(`geolocation error ${e.message}`);
+        });
+
+        map.addControl(geolocate);
+
+        function setEditMode() {
+            const modeLabel = document.getElementById('modeLabel');
+            modeLabel.innerText = "Edit Mode";
+            map.setPaintProperty('sidewalks-layer', 'line-color', [
+                'match', 
+                ['get', 'status'],
+                'missing', '#00ffff',  // cyan for missing
+                'unresolved', '#FF0000',  // red for unresolved
+                'ok', '#327da8',  // blue for ok
+                '#000000'
+            ]);
+
+            map.setFilter('sidewalks-layer', null);
+        }
+
+        function setNormalMode() {
+            const modeLabel = document.getElementById('modeLabel');
+            modeLabel.innerText = "Normal Mode";
+            map.setPaintProperty('sidewalks-layer', 'line-color', [
+                'interpolate',
+                ['linear'],
+                ['to-number', ['coalesce', ['get', 'hours_to_next_sweep'], -1]],
+                -1, '#000000', // black if no data
+                12, '#FF0000',  // red for immediate sweep
+                24, '#FFA500',  // orange for sweep in next 24 hours
+                36, '#FFFF00',  // yellow for sweep in next 36 hours
+                48, '#008000',  // green for sweep in next 2 days
+            ]);
+            map.setFilter('sidewalks-layer', ['==', ['get', 'status'], 'ok']);
+        }
+
         function toggleMode() {
             isEditMode = !isEditMode;
 
-            const modeLabel = document.getElementById('modeLabel');
-            modeLabel.innerText = isEditMode ? "Edit Mode" : "Normal Mode";
-
             if (isEditMode) {
-                map.setPaintProperty('sidewalks-layer', 'line-color', [
-                    'match', 
-                    ['get', 'status'],
-                    'missing', '#00ffff',  // cyan for missing
-                    'unresolved', '#FF0000',  // red for unresolved
-                    'ok', '#327da8',  // blue for ok
-                    '#000000'
-                ]);
+                setEditMode();
             } else {
-                map.setPaintProperty('sidewalks-layer', 'line-color', [
-                    'interpolate',
-                    ['linear'],
-                    ['to-number', ['coalesce', ['get', 'hours_to_next_sweep'], -1]],
-                    -1, '#000000', // black if no data
-                    12, '#FF0000',  // red for immediate sweep
-                    24, '#FFA500',  // orange for sweep in next 24 hours
-                    36, '#FFFF00',  // yellow for sweep in next 36 hours
-                    48, '#008000',  // green for sweep in next 2 days
-                ]);
+                setNormalMode();
             }
         }
 
@@ -159,15 +283,19 @@
         // Attach the toggle function to the slider switch
         document.getElementById('toggleMode').addEventListener('change', toggleMode);
 
+        var userCoords;
+
         map.on("load", () => {
-            // add the listingtile source from FastAPI tile server
+            geolocate.trigger();
+            // add the tile source from FastAPI tile server
             map.addSource("sidewalks", {
                 type: "vector",
                 tiles: [sidewalksUrl],
                 minzoom: 8,
-                maxzoom: 24,
+                maxzoom: 15,
             });
 
+            // enable highlighting of sidewalks
             map.addLayer({
                 id: "sidewalks-layer",
                 type: "line",
@@ -178,24 +306,18 @@
                         'case',
                         ['boolean', ['feature-state', 'highlighted'], false], 5,
                         2
-                    ],
-                    'line-color': [
-                        'interpolate',
-                        ['linear'],
-                        ['to-number', ['coalesce', ['get', 'hours_to_next_sweep'], -1]],
-                        -1, '#000000',
-                        12, '#FF0000',
-                        24, '#FFA500',
-                        36, '#FFFF00',
-                        48, '#008000',
                     ]
                 }
             });
+
+            // set the default mode
+            setNormalMode();
 
             map.on("click", "sidewalks-layer", (e) => {
                 console.log(e.features[0])
                 const sidewalkId = e.features[0].id;
                 const sidewalkData = e.features[0].properties;
+
                 if (highlightedSidewalkId) {
                     map.setFeatureState(
                         { source: 'sidewalks', sourceLayer: "default", id: highlightedSidewalkId },
@@ -218,9 +340,9 @@
                 } else {
                     popupHtml = getInfoPopup(sidewalkData);
                 }
-                const coordinates = e.lngLat;
-                new maplibregl.Popup({ offset: 25 })
-                    .setLngLat(coordinates)
+
+                new maplibregl.Popup({ offset: 10 })
+                    .setLngLat(e.lngLat)
                     .setHTML(popupHtml)
                     .addTo(map);
             });
@@ -244,7 +366,8 @@
 
             const tooltip = new maplibregl.Popup({
                 closeButton: false,
-                closeOnClick: false
+                closeOnClick: false,
+                offset: 10,
             });
 
             map.on("mousemove", "sidewalks-layer", (e) => {
@@ -307,13 +430,14 @@
                         <option value="unresolved" ${status === 'unresolved' ? 'selected' : ''}>Unresolved</option>
                         <option value="ok" ${status === 'ok' ? 'selected' : ''}>OK</option>
                     </select>
-                    <button type="button" onclick="submitForm(${id})">Submit</button>
+                    <button type="button" onclick="updateSidewalk(${id})">Submit</button>
                 </form>
             `;
         }
 
         function getInfoPopup(sidewalkData) {
             const [nextSweepStart, nextSweepEnd] = getFormattedSweepTimes(sidewalkData.next_sweep_at, sidewalkData.start_time, sidewalkData.end_time);
+
             return `
                 <div id="popupInfo">
                     <strong>Street:</strong> ${sidewalkData.street_name} (${sidewalkData.side} side)<br/>
@@ -324,7 +448,13 @@
             `;
         }
 
-        function submitForm(sidewalkId) {
+        function updateSidewalk(sidewalkId) {
+            const accessToken = localStorage.getItem(authTokenKey);
+            if (!accessToken) {
+                console.error("Not authenticated");
+                return;
+            }
+
             var scheduleId = document.getElementById('schedule_id').value;
             var status = document.getElementById('sidewalk_status').value;
 
@@ -332,6 +462,7 @@
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`,
                 },
                 body: JSON.stringify({
                     schedule_id: scheduleId,
@@ -339,6 +470,7 @@
                 })
             })
             .then(response => {
+                console.log(response)
                 if (!response.ok) {
                     throw new Error('Network response was not ok');
                 }
@@ -354,6 +486,158 @@
                 console.error('Error:', error);
             });
         }
+
+        async function fetchCurrentUser() {
+            const accessToken = localStorage.getItem(authTokenKey);
+            if (!accessToken) {
+                return Promise.reject(null);
+            }
+
+            fetch(`${serverUrl}/me`, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Success:', data.data);
+                return Promise.resolve(data.data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                handleLogout();
+                return Promise.reject(null);
+            })
+        }
+
+        var user;
+
+        // login stuff
+        var modal = document.getElementById("loginModal");
+        var modalCloseButton = document.getElementsByClassName("close")[0];
+        var loginButton = document.getElementById("loginButton");
+        var authedOverlay = document.getElementById("authedOverlay");
+        var logoutButton = document.getElementById("logoutButton");
+
+        async function handleLogin(token) {
+            localStorage.setItem(authTokenKey, token);
+            try {
+                user = await fetchCurrentUser();
+                showAuthedUI();
+            } catch (error) {
+                console.error('Error:', error);
+                // Handle the error and provide feedback to the user
+            }
+        }
+
+        async function handleLogout() {
+            localStorage.removeItem(authTokenKey);
+            showUnauthedUI();
+            if (isEditMode) {
+                setNormalMode();
+            }
+        }
+
+        function showUnauthedUI() {
+            showLoginButton();
+            hideAuthedOverlay();
+        }
+
+        function showAuthedUI() {
+            showLogoutButton();
+            showAuthedOverlay();
+        }
+
+        function showAuthedOverlay() {
+            authedOverlay.style.display = "block";
+            modal.style.display = "none";
+
+        }
+
+        function hideAuthedOverlay() {
+            authedOverlay.style.display = "none";
+        }
+
+        function showLoginButton() {
+            loginButton.style.display = "block";
+            logoutButton.style.display = "none";
+        }
+
+        function showLogoutButton() {
+            logoutButton.style.display = "block";
+            loginButton.style.display = "none";
+        }
+
+        // Hide the authed overlay when the page loads if the user is not authenticated
+        window.onload = async function() {
+            const token = localStorage.getItem(authTokenKey);
+            if (token) {
+                await handleLogin(token);
+            } else {
+                showUnauthedUI();
+            }
+        }
+
+        // Show the login modal when the login button is clicked
+        loginButton.onclick = function() {
+            modal.style.display = "block";
+        }
+
+        logoutButton.onclick = function() {
+            handleLogout();
+        }
+
+        // When the user clicks on <span> (x), close the modal
+        modalCloseButton.onclick = function() {
+            modal.style.display = "none";
+        }
+
+        // When the user clicks anywhere outside of the modal, close it
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+
+        // Handle the login form submission
+        document.getElementById("loginForm").onsubmit = function(event) {
+            event.preventDefault();
+            var username = document.getElementById("username");
+            var password = document.getElementById("password");
+
+            fetch(`${serverUrl}/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username: username.value,
+                    password: password.value,
+                })
+            }).then((response) => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            }).then((data) => {
+                username.value = "";
+                password.value = "";
+                handleLogin(data.access_token);
+            }).catch((error) => {
+                console.error('Login error:', error);
+            });
+        }
+
+        // // Handle the register button click
+        // document.getElementById("registerButton").onclick = function() {
+        //     // Redirect to the registration page or open the registration form here
+        // }
     </script>
     
 </body>

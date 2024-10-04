@@ -6,7 +6,14 @@ from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 
-class Schedule(Base):
+class BaseModel(Base):
+    __abstract__ = True  # This class will not be created in the database
+
+    def as_dict(self):
+        return {column.name: getattr(self, column.name) for column in self.__table__.columns}
+
+
+class Schedule(BaseModel):
     __tablename__ = 'schedules'
 
     id = Column(Integer, primary_key=True)
@@ -39,7 +46,7 @@ class Schedule(Base):
     north_end_pilot = Column(Boolean)
 
 
-class Sidewalk(Base):
+class Sidewalk(BaseModel):
     __tablename__ = 'sidewalks'
 
     id = Column(Integer, primary_key=True)
@@ -55,3 +62,28 @@ class Sidewalk(Base):
         nullable=False,
     )
     schedule = relationship("Schedule", backref="sidewalks")
+
+
+class User(BaseModel):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    role = Column(String)
+
+    def as_dict(self):
+        user_dict = super().as_dict()
+        user_dict.pop('hashed_password', None)
+        return user_dict
+
+
+class SidewalkAdjustment(BaseModel):
+    __tablename__ = 'sidewalk_adjustments'
+
+    id = Column(Integer, primary_key=True)
+    sidewalk_id = Column(Integer, ForeignKey('sidewalks.id'))
+    schedule_id = Column(Integer, ForeignKey('schedules.id'))
+    user_id = Column(Integer, ForeignKey('users.id'))
+    status = Column(String)

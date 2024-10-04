@@ -11,10 +11,8 @@ from geoalchemy2.functions import (
 from sqlalchemy import and_, select, text, update, func, case, DateTime, cast
 from sqlalchemy.types import TIMESTAMP
 from sqlalchemy.ext.asyncio import AsyncSession
-from models import Sidewalk, Schedule
+from models import Sidewalk, Schedule, User, SidewalkAdjustment
 from datetime import datetime, timedelta
-
-
 
 @cached(
     ttl=600,
@@ -125,7 +123,7 @@ async def get_sidewalks_tiles_bytes(
             schedules.year_round,
             schedules.north_end_pilot,
             next_sweep_times.next_sweep_at,
-            FLOOR((EXTRACT(EPOCH FROM next_sweep_times.next_sweep_at + s.start_time::interval) - EXTRACT(EPOCH FROM CURRENT_DATE::timestamp))/3600) as hours_to_next_sweep
+            FLOOR((EXTRACT(EPOCH FROM next_sweep_times.next_sweep_at + schedules.start_time::interval) - EXTRACT(EPOCH FROM CURRENT_DATE::timestamp))/3600) as hours_to_next_sweep
         FROM
             sidewalks
         JOIN
@@ -153,7 +151,7 @@ async def get_sidewalks_tiles_bytes(
     serializer=PickleSerializer(),
 )
 async def get_sidewalk_by_id(
-    id: str,
+    id: int,
     session: AsyncSession
 ) -> Dict:
     query = (
@@ -187,7 +185,7 @@ async def get_sidewalk_by_id(
             Schedule.north_end_pilot
         )
         .outerjoin(Schedule, Sidewalk.schedule_id == Schedule.id)
-        .where(Sidewalk.id == int(id))
+        .where(Sidewalk.id == id)
     )
 
     result = await session.execute(query)
@@ -197,3 +195,45 @@ async def get_sidewalk_by_id(
         return None
 
     return sidewalk._asdict()
+
+
+async def get_user(username: str, session: AsyncSession, email: str | None = None) -> Dict:
+    if email:
+        query = select(User).filter((User.username == username) | (User.email == email))
+    else:
+        query = select(User).filter(User.username == username)
+    result = await session.execute(query)
+    user = result.scalars().first()
+    if user is None:
+        return None
+    return user
+
+
+async def create_user(username: str, email: str, hashed_password: str, session: AsyncSession) -> Dict:
+    new_user = User(
+        username=username,
+        email=email,
+        hashed_password=hashed_password,
+        role="adjuster"
+    )
+
+    session.add(new_user)
+    await session.commit()
+    await session.refresh(new_user)
+
+    return new_user
+
+
+async def create_sidewalk_adjustment(sidewalk_id: int, schedule_id: int, status: str, user_id: int, session: AsyncSession) -> Dict:
+    new_adjustment = SidewalkAdjustment(
+        user_id=user_id,
+        sidewalk_id=sidewalk_id,
+        schedule_id=schedule_id,
+        status=status
+    )
+
+    session.add(new_adjustment)
+    await session.commit()
+    await session.refresh(new_adjustment)
+
+    return new_adjustment
