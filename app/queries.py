@@ -194,9 +194,12 @@ async def get_sidewalk_by_id(
 
 async def get_user(session: AsyncSession, username: str | None = None, email: str | None = None) -> Dict:
     if email:
-        query = select(User).filter((User.username == username) | (User.email == email))
+        query = select(User).filter(User.email.ilike(email))
+    elif username:
+        query = select(User).filter(User.username.ilike(username))
     else:
-        query = select(User).filter(User.username == username)
+        raise ValueError("Must provide either username or email")
+
     result = await session.execute(query)
     user = result.scalars().first()
     if user is None:
