@@ -227,6 +227,13 @@
         .maplibregl-ctrl-bottom-left {
             margin-bottom: 10px;
         }
+
+        /* Prevents zooming in when clicking text field on mobile */
+        @media (max-width: 600px) {
+            input, textarea, select {
+                font-size: 16px;
+            }
+        }
     </style>
 </head>
 <body>
