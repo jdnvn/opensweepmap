@@ -145,11 +145,6 @@ async def get_sidewalks_tiles_bytes(
     return result.scalar()
 
 
-@cached(
-    ttl=600,
-    cache=Cache.MEMORY,
-    serializer=PickleSerializer(),
-)
 async def get_sidewalk_by_id(
     id: int,
     session: AsyncSession

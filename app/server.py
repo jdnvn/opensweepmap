@@ -134,7 +134,7 @@ async def put_sidewalk(id: int, request: dict, session: AsyncSession = Depends(g
         logger.info(f"ERROR: {str(e)}")
         return JSONResponse(status_code=422, content={'message': 'invalid request body'})
 
-    if int(sidewalk['schedule_id']) != schedule_id:
+    if sidewalk['schedule_id'] != schedule_id:
         status = 'ok'
 
     try:
