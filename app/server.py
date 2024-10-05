@@ -1,4 +1,5 @@
 import os
+import re
 import gzip
 import logging
 from models import Sidewalk, Schedule, User
@@ -12,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, select, text, update
 from queries import get_sidewalks_tiles_bytes, get_sidewalk_by_id, get_user, create_user, create_sidewalk_adjustment
 from db import get_session
-from auth import create_access_token, verify_password, get_password_hash, verify_access_token
+from auth import create_access_token, verify_password, get_password_hash, verify_access_token, MAX_USERNAME_LENGTH
 
 SERVER_PORT = os.environ.get('SERVER_PORT', 8000)
 SERVER_HOST = os.environ.get('SERVER_HOST')
@@ -61,19 +62,29 @@ async def login(request: dict, session: AsyncSession = Depends(get_session)):
 
 @app.post("/register")
 async def register(request: dict, session: AsyncSession = Depends(get_session)):
-    try:
-        username = request.get("username")
-        email = request.get("email")
-        password = request.get("password")
-    except:
-        return JSONResponse(status_code=422, content={'message': 'invalid request body'})
+    errors = []
+
+    username = request.get("username")
+    if not username or len(username) > MAX_USERNAME_LENGTH or not re.match(r"^[a-zA-Z0-9_]+$", username):
+        errors.append('invalid username')
+
+    email = request.get("email")
+    if not email or not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        errors.append('invalid email')
+
+    password = request.get("password")
+    if not password:
+        errors.append('invalid password')
+
+    if errors:
+        return JSONResponse(status_code=422, content={'errors': errors})
 
     existing_user_with_email = await get_user(email=email, session=session)
     if existing_user_with_email:
-        return JSONResponse(status_code=400, content={'data': 'user already exists with that email'})
+        return JSONResponse(status_code=400, content={'errors': ['user already exists with that email']})
     existing_user_with_username = await get_user(username=username, session=session)
     if existing_user_with_username:
-        return JSONResponse(status_code=400, content={'data': 'that username is taken'})
+        return JSONResponse(status_code=400, content={'errors': ['that username is taken']})
 
     hashed_password = get_password_hash(password)
 
