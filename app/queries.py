@@ -192,7 +192,7 @@ async def get_sidewalk_by_id(
     return sidewalk._asdict()
 
 
-async def get_user(username: str, session: AsyncSession, email: str | None = None) -> Dict:
+async def get_user(session: AsyncSession, username: str | None = None, email: str | None = None) -> Dict:
     if email:
         query = select(User).filter((User.username == username) | (User.email == email))
     else:
