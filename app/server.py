@@ -46,15 +46,18 @@ async def map(request: Request):
 
 @app.post("/login")
 async def login(request: dict, session: AsyncSession = Depends(get_session)):
-    try:
-        username = request.get('username')
-        password = request.get('password')
-    except:
-        return JSONResponse(status_code=422, content={'message': 'invalid request body'})
+    errors = []
+
+    if not (username := request.get('username')):
+        errors.append('username is required')
+    if not (password := request.get('password')):
+        errors.append('password is required')
+    if errors:
+        return JSONResponse(status_code=422, content={'errors': errors})
 
     user = await get_user(username=username, session=session)
     if not user or not verify_password(password, user.hashed_password):
-        return JSONResponse(status_code=401, content={'data': 'invalid username or password'})
+        return JSONResponse(status_code=401, content={'errors': ['invalid username or password']})
 
     access_token = create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
