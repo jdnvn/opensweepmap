@@ -15,17 +15,37 @@
             <span class="close">&times;</span>
             <div class="modal-body">
                 <form id="loginForm">
+                    <div class="form-error-message" id="loginError"></div>
                     <div class="input-group">
-                        <label for="username">Username:</label>
-                        <input type="text" id="username" name="username">
+                        <label for="loginUsername">Username:</label>
+                        <input type="text" id="loginUsername" name="username">
                     </div>
                     <div class="input-group">
-                        <label for="password">Password:</label>
-                        <input type="password" id="password" name="password">
+                        <label for="loginPassword">Password:</label>
+                        <input type="password" id="loginPassword" name="password">
                     </div>
                     <input type="submit" value="Log in">
                 </form>
-                <!-- <button id="registerButton">Register</button> -->
+
+                <form id="registerForm">
+                    <div class="form-error-message" id="registerError"></div>
+                    <div class="input-group">
+                        <label for="registerUsername">Username:</label>
+                        <input type="text" id="registerUsername" name="username">
+                    </div>
+                    <div class="input-group">
+                        <label for="registerEmail">Email:</label>
+                        <input type="text" id="registerEmail" name="email">
+                    </div>
+                    <div class="input-group">
+                        <label for="registerPassword">Password:</label>
+                        <input type="password" id="registerPassword" name="password">
+                    </div>
+                    <input type="submit" value="Register">
+                </form>
+
+                <button class="text-link-button" id="switchRegisterButton">Need an account? Register</button>
+                <button class="text-link-button" id="switchLoginButton">Have an account? Login</button>
             </div>
         </div>
     </div>
@@ -152,11 +172,35 @@
             margin-right: 10px; /* Add some space to the right of the label */
         }
 
+        #registerForm {
+            display: none;
+        }
+
+        #switchLoginButton {
+            display: none;
+        }
+
+        .form-error-message {
+            color: red;
+            margin-bottom: 10px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .text-link-button {
+            margin-top: 10px;
+            background: none;
+            border: none;
+            color: blue;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
         .close {
             color: #aaa;
             position: absolute;
             top: 10px;
-            right: 10px;
+            right: 16px;
             font-size: 28px;
             font-weight: bold;
         }
@@ -178,6 +222,10 @@
             z-index: 1;
             font-family: Arial, sans-serif;
             display: none;
+        }
+
+        .maplibregl-ctrl-bottom-left {
+            margin-bottom: 10px;
         }
     </style>
 </head>
@@ -227,9 +275,10 @@
             console.log(`geolocation error ${e.message}`);
         });
 
-        map.addControl(geolocate);
+        map.addControl(geolocate, 'bottom-left');
 
         function setEditMode() {
+            isEditMode = true;
             const modeLabel = document.getElementById('modeLabel');
             modeLabel.innerText = "Edit Mode";
             map.setPaintProperty('sidewalks-layer', 'line-color', [
@@ -245,6 +294,7 @@
         }
 
         function setNormalMode() {
+            isEditMode = false;
             const modeLabel = document.getElementById('modeLabel');
             modeLabel.innerText = "Normal Mode";
             map.setPaintProperty('sidewalks-layer', 'line-color', [
@@ -261,12 +311,10 @@
         }
 
         function toggleMode() {
-            isEditMode = !isEditMode;
-
             if (isEditMode) {
-                setEditMode();
-            } else {
                 setNormalMode();
+            } else {
+                setEditMode();
             }
         }
 
@@ -326,9 +374,12 @@
             setNormalMode();
 
             map.on("click", "sidewalks-layer-click", (e) => {
-                console.log(e.features[0])
                 const sidewalkId = e.features[0].id;
                 const sidewalkData = e.features[0].properties;
+
+                if (!isEditMode && sidewalkData.status != 'ok') {
+                    return;
+                }
 
                 if (highlightedSidewalkId) {
                     map.setFeatureState(
@@ -383,8 +434,6 @@
             });
 
             map.on("mousemove", "sidewalks-layer-click", (e) => {
-                map.getCanvas().style.cursor = 'pointer';
-                tooltip.remove();
                 if (e.features.length > 0) {
                     const feature = e.features[0];
 
@@ -395,6 +444,14 @@
                     const fromStreet = feature.properties.from_street_name;
                     const toStreet = feature.properties.to_street_name;
 
+                    // do not show tooltip for missing or unresolved sidewalks in normal mode
+                    if (!isEditMode && status != 'ok') {
+                        return;
+                    }
+
+                    map.getCanvas().style.cursor = 'pointer';
+                    tooltip.remove();
+
                     var tooltipContent = "";
                     if (isEditMode) {
                         tooltipContent += `
@@ -403,7 +460,7 @@
                         `;
                     }
                     tooltipContent += `
-                        <strong>Street:</strong> ${streetName} (${side} side)<br/>
+                        <strong>Street:</strong> ${streetName} ${getStreetSideText(side)}<br/>
                         <strong>From:</strong> ${fromStreet}<br/>
                         <strong>To:</strong> ${toStreet}<br/>
                     `;
@@ -429,6 +486,13 @@
             });
         });
 
+        function getStreetSideText(side) {
+            if (side == 'none') {
+                return "";
+            } else {
+                return `(${side} side${side == 'both' ? 's' : ''})`;
+            }
+        }
 
         function getEditPopup(id, schedule_id, status) {
             return `
@@ -536,6 +600,12 @@
         var loginButton = document.getElementById("loginButton");
         var authedOverlay = document.getElementById("authedOverlay");
         var logoutButton = document.getElementById("logoutButton");
+        var switchRegisterButton = document.getElementById("switchRegisterButton");
+        var switchLoginButton = document.getElementById("switchLoginButton");
+        var registerForm = document.getElementById("registerForm");
+        var loginForm = document.getElementById("loginForm");
+        var registerError = document.getElementById("registerError");
+        var loginError = document.getElementById("loginError");
 
         async function handleLogin(token) {
             localStorage.setItem(authTokenKey, token);
@@ -586,6 +656,20 @@
             loginButton.style.display = "none";
         }
 
+        function switchToRegister() {
+            registerForm.style.display = "block";
+            loginForm.style.display = "none";
+            switchLoginButton.style.display = "block";
+            switchRegisterButton.style.display = "none";
+        }
+
+        function switchToLogin() {
+            registerForm.style.display = "none";
+            loginForm.style.display = "block";
+            switchLoginButton.style.display = "none";
+            switchRegisterButton.style.display = "block";
+        }
+
         // Hide the authed overlay when the page loads if the user is not authenticated
         window.onload = async function() {
             const token = localStorage.getItem(authTokenKey);
@@ -605,23 +689,28 @@
             handleLogout();
         }
 
-        // When the user clicks on <span> (x), close the modal
+        switchRegisterButton.onclick = switchToRegister;
+
+        switchLoginButton.onclick = switchToLogin;
+
+        // when the user clicks on <span> (x), close the modal
         modalCloseButton.onclick = function() {
             modal.style.display = "none";
         }
 
-        // When the user clicks anywhere outside of the modal, close it
+        // when the user clicks anywhere outside of the modal, close it
         window.onclick = function(event) {
             if (event.target == modal) {
                 modal.style.display = "none";
             }
         }
 
-        // Handle the login form submission
-        document.getElementById("loginForm").onsubmit = function(event) {
+        // login form submission
+        loginForm.onsubmit = function(event) {
+            loginError.textContent = "";
             event.preventDefault();
-            var username = document.getElementById("username");
-            var password = document.getElementById("password");
+            var username = document.getElementById("loginUsername");
+            var password = document.getElementById("loginPassword");
 
             fetch(`${serverUrl}/login`, {
                 method: 'POST',
@@ -634,7 +723,9 @@
                 })
             }).then((response) => {
                 if (!response.ok) {
-                    throw new Error('Network response was not ok');
+                    return response.json().then((error) => {
+                        throw new Error(error.data);
+                    });
                 }
                 return response.json();
             }).then((data) => {
@@ -643,13 +734,45 @@
                 handleLogin(data.access_token);
             }).catch((error) => {
                 console.error('Login error:', error);
+                loginError.textContent = error.message;
             });
         }
 
-        // // Handle the register button click
-        // document.getElementById("registerButton").onclick = function() {
-        //     // Redirect to the registration page or open the registration form here
-        // }
+        // register form submission
+        registerForm.onsubmit = function(event) {
+            registerError.textContent = "";
+            event.preventDefault();
+            var username = document.getElementById("registerUsername");
+            var email = document.getElementById("registerEmail");
+            var password = document.getElementById("registerPassword");
+
+            fetch(`${serverUrl}/register`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username: username.value,
+                    email: email.value,
+                    password: password.value,
+                })
+            }).then((response) => {
+                if (!response.ok) {
+                    return response.json().then((error) => {
+                        throw new Error(error.data);
+                    });
+                }
+                return response.json();
+            }).then((data) => {
+                username.value = "";
+                email.value = "";
+                password.value = "";
+                switchToLogin();
+            }).catch((error) => {
+                console.error('Register error:', error);
+                registerError.textContent = error.message;
+            });
+        }
     </script>
     
 </body>

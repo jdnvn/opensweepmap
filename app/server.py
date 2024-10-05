@@ -68,9 +68,12 @@ async def register(request: dict, session: AsyncSession = Depends(get_session)):
     except:
         return JSONResponse(status_code=422, content={'message': 'invalid request body'})
 
-    existing_user = await get_user(username=username, email=email, session=session)
-    if existing_user:
-        return JSONResponse(status_code=400, content={'data': 'user already exists with those credentials'})
+    existing_user_with_email = await get_user(email=email, session=session)
+    if existing_user_with_email:
+        return JSONResponse(status_code=400, content={'data': 'user already exists with that email'})
+    existing_user_with_username = await get_user(username=username, session=session)
+    if existing_user_with_username:
+        return JSONResponse(status_code=400, content={'data': 'that username is taken'})
 
     hashed_password = get_password_hash(password)
 
@@ -134,7 +137,7 @@ async def put_sidewalk(id: int, request: dict, session: AsyncSession = Depends(g
         logger.info(f"ERROR: {str(e)}")
         return JSONResponse(status_code=422, content={'message': 'invalid request body'})
 
-    if int(sidewalk['schedule_id']) != schedule_id:
+    if sidewalk['schedule_id'] != schedule_id:
         status = 'ok'
 
     try:
