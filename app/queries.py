@@ -14,12 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import Sidewalk, Schedule, User, SidewalkAdjustment
 from datetime import datetime, timedelta
 
-@cached(
-    ttl=600,
-    cache=Cache.MEMORY,
-    serializer=PickleSerializer(),
-)
-async def get_sidewalks_tiles_bytes(
+
+async def _get_sidewalks_tiles_bytes(
     session: AsyncSession,
     z: int,
     x: int,
@@ -143,6 +139,20 @@ async def get_sidewalks_tiles_bytes(
 
     result = await session.execute(query, {"z": z, "x": x, "y": y})
     return result.scalar()
+
+
+@cached(
+    ttl=600,
+    cache=Cache.MEMORY,
+    serializer=PickleSerializer(),
+)
+async def get_sidewalks_tiles_bytes(
+    session: AsyncSession,
+    z: int,
+    x: int,
+    y: int,
+) -> bytes | None:
+    return await _get_sidewalks_tiles_bytes(session, z, x, y)
 
 
 async def get_sidewalk_by_id(
