@@ -13,7 +13,9 @@ from sqlalchemy.types import TIMESTAMP
 from sqlalchemy.ext.asyncio import AsyncSession
 from models import Sidewalk, Schedule, User, SidewalkAdjustment
 from datetime import datetime, timedelta
+import logging
 
+logger = logging.getLogger("gunicorn.error")
 
 async def _get_sidewalks_tiles_bytes(
     session: AsyncSession,
@@ -21,6 +23,7 @@ async def _get_sidewalks_tiles_bytes(
     x: int,
     y: int,
 ) -> bytes | None:
+    logger.info(f"Generating MVT for z={z}, x={x}, y={y}")
     query = text("""
     WITH RECURSIVE next_sweep_day AS (
         SELECT
