@@ -13,6 +13,7 @@ from sqlalchemy.types import TIMESTAMP
 from sqlalchemy.ext.asyncio import AsyncSession
 from models import Sidewalk, Schedule, User, SidewalkAdjustment
 from datetime import datetime, timedelta
+import json
 
 @cached(
     ttl=600,
@@ -145,7 +146,7 @@ async def get_sidewalks_tiles_bytes(
     return result.scalar()
 
 
-def get_sidewalks_geojson(session: AsyncSession) -> Dict:
+async def get_sidewalks_geojson(session: AsyncSession) -> Dict:
     query = (
         select(
             Sidewalk.id,
@@ -181,8 +182,10 @@ def get_sidewalks_geojson(session: AsyncSession) -> Dict:
 
     result = await session.execute(query)
     sidewalks_data = [row._asdict() for row in result.all()]
+    sidewalks_feature_collection = [{"type": "Feature", "id": row["id"], "geometry": json.loads(row.pop("geojson")), "properties": row} for row in sidewalks_data]
+    sidewalks_geojson = {"type": "FeatureCollection", "features": sidewalks_feature_collection}
 
-    return sidewalks_data
+    return sidewalks_geojson
 
 
 async def get_sidewalk_by_id(
