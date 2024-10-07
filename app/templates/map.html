@@ -7,55 +7,6 @@
     
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@2.1.0/dist/maplibre-gl.css" />
     <script src="https://unpkg.com/maplibre-gl@2.1.0/dist/maplibre-gl.js"></script>
-    
-    <button id="loginButton" class="auth-button">Log in</button>
-    <button id="logoutButton" class="auth-button">Log out</button>
-    <div id="loginModal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <div class="modal-body">
-                <form id="loginForm">
-                    <div class="form-error-message" id="loginError"></div>
-                    <div class="input-group">
-                        <label for="loginUsername">Username:</label>
-                        <input type="text" id="loginUsername" name="username">
-                    </div>
-                    <div class="input-group">
-                        <label for="loginPassword">Password:</label>
-                        <input type="password" id="loginPassword" name="password">
-                    </div>
-                    <input type="submit" value="Log in">
-                </form>
-
-                <form id="registerForm">
-                    <div class="form-error-message" id="registerError"></div>
-                    <div class="input-group">
-                        <label for="registerUsername">Username:</label>
-                        <input type="text" id="registerUsername" name="username">
-                    </div>
-                    <div class="input-group">
-                        <label for="registerEmail">Email:</label>
-                        <input type="text" id="registerEmail" name="email">
-                    </div>
-                    <div class="input-group">
-                        <label for="registerPassword">Password:</label>
-                        <input type="password" id="registerPassword" name="password">
-                    </div>
-                    <input type="submit" value="Register">
-                </form>
-
-                <button class="text-link-button" id="switchRegisterButton">Need an account? Register</button>
-                <button class="text-link-button" id="switchLoginButton">Have an account? Login</button>
-            </div>
-        </div>
-    </div>
-    <div class="authed-overlay" id="authedOverlay">
-        <label class="switch">
-            <input type="checkbox" id="toggleMode">
-            <span class="slider round"></span>
-        </label>
-        <span id="modeLabel">Normal Mode</span>
-    </div>
     <style>
         #map {
             height: 100vh;
@@ -237,7 +188,54 @@
     </style>
 </head>
 <body>
-    
+    <button id="loginButton" class="auth-button">Log in</button>
+    <button id="logoutButton" class="auth-button">Log out</button>
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div class="modal-body">
+                <form id="loginForm">
+                    <div class="form-error-message" id="loginError"></div>
+                    <div class="input-group">
+                        <label for="loginUsername">Username:</label>
+                        <input type="text" id="loginUsername" name="username">
+                    </div>
+                    <div class="input-group">
+                        <label for="loginPassword">Password:</label>
+                        <input type="password" id="loginPassword" name="password">
+                    </div>
+                    <input type="submit" value="Log in">
+                </form>
+
+                <form id="registerForm">
+                    <div class="form-error-message" id="registerError"></div>
+                    <div class="input-group">
+                        <label for="registerUsername">Username:</label>
+                        <input type="text" id="registerUsername" name="username">
+                    </div>
+                    <div class="input-group">
+                        <label for="registerEmail">Email:</label>
+                        <input type="text" id="registerEmail" name="email">
+                    </div>
+                    <div class="input-group">
+                        <label for="registerPassword">Password:</label>
+                        <input type="password" id="registerPassword" name="password">
+                    </div>
+                    <input type="submit" value="Register">
+                </form>
+
+                <button class="text-link-button" id="switchRegisterButton">Need an account? Register</button>
+                <button class="text-link-button" id="switchLoginButton">Have an account? Login</button>
+            </div>
+        </div>
+    </div>
+    <div class="authed-overlay" id="authedOverlay">
+        <label class="switch">
+            <input type="checkbox" id="toggleMode">
+            <span class="slider round"></span>
+        </label>
+        <span id="modeLabel">Normal Mode</span>
+    </div>
     <div id='map'></div>
 
     <script>

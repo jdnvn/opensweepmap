@@ -13,11 +13,26 @@
             height: 100vh;
             width: 100%;
         }
+        .auth-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1;
+            font-family: Arial, sans-serif;
+            display: block;
+        }
     </style>
 </head>
 <body>
+    <button id="logoutButton" class="auth-button">Log out</button>
     <div id='map'></div>
     <script>
+        if (!localStorage.getItem("SM_TOKEN")) {
+            window.location.href = '/';
+        }
         var authTokenKey = "SM_TOKEN";
         var serverUrl = '{{ server_url }}';
         const sidewalksUrl = `${serverUrl}/sidewalks/geojson`;
@@ -276,187 +291,38 @@
             })
         }
 
-        // var user;
+        var user;
 
-        // // login stuff
-        // var modal = document.getElementById("loginModal");
-        // var modalCloseButton = document.getElementsByClassName("close")[0];
-        // var loginButton = document.getElementById("loginButton");
-        // var authedOverlay = document.getElementById("authedOverlay");
-        // var logoutButton = document.getElementById("logoutButton");
-        // var switchRegisterButton = document.getElementById("switchRegisterButton");
-        // var switchLoginButton = document.getElementById("switchLoginButton");
-        // var registerForm = document.getElementById("registerForm");
-        // var loginForm = document.getElementById("loginForm");
-        // var registerError = document.getElementById("registerError");
-        // var loginError = document.getElementById("loginError");
+        var logoutButton = document.getElementById("logoutButton");
 
-        // async function handleLogin(token) {
-        //     localStorage.setItem(authTokenKey, token);
-        //     try {
-        //         user = await fetchCurrentUser();
-        //         showAuthedUI();
-        //     } catch (error) {
-        //         console.error('Error:', error);
-        //         // Handle the error and provide feedback to the user
-        //     }
-        // }
+        async function handleLogin(token) {
+            localStorage.setItem(authTokenKey, token);
+            try {
+                user = await fetchCurrentUser();
+            } catch (error) {
+                console.error('Error:', error);
+                window.location.href = '/';
+            }
+        }
 
-        // async function handleLogout() {
-        //     localStorage.removeItem(authTokenKey);
-        //     showUnauthedUI();
-        //     if (isEditMode) {
-        //         setNormalMode();
-        //     }
-        // }
-
-        // function showUnauthedUI() {
-        //     showLoginButton();
-        //     hideAuthedOverlay();
-        // }
-
-        // function showAuthedUI() {
-        //     showLogoutButton();
-        //     showAuthedOverlay();
-        // }
-
-        // function showAuthedOverlay() {
-        //     authedOverlay.style.display = "block";
-        //     modal.style.display = "none";
-
-        // }
-
-        // function hideAuthedOverlay() {
-        //     authedOverlay.style.display = "none";
-        // }
-
-        // function showLoginButton() {
-        //     loginButton.style.display = "block";
-        //     logoutButton.style.display = "none";
-        // }
-
-        // function showLogoutButton() {
-        //     logoutButton.style.display = "block";
-        //     loginButton.style.display = "none";
-        // }
-
-        // function switchToRegister() {
-        //     registerForm.style.display = "block";
-        //     loginForm.style.display = "none";
-        //     switchLoginButton.style.display = "block";
-        //     switchRegisterButton.style.display = "none";
-        // }
-
-        // function switchToLogin() {
-        //     registerForm.style.display = "none";
-        //     loginForm.style.display = "block";
-        //     switchLoginButton.style.display = "none";
-        //     switchRegisterButton.style.display = "block";
-        // }
+        async function handleLogout() {
+            localStorage.removeItem(authTokenKey);
+            window.location.href = '/';
+        }
 
         // Hide the authed overlay when the page loads if the user is not authenticated
-        // window.onload = async function() {
-        //     const token = localStorage.getItem(authTokenKey);
-        //     if (token) {
-        //         await handleLogin(token);
-        //     } else {
-        //         showUnauthedUI();
-        //     }
-        // }
+        window.onload = async function() {
+            const token = localStorage.getItem(authTokenKey);
+            if (token) {
+                await handleLogin(token);
+            } else {
+                window.location.href = '/';
+            }
+        }
 
-        // // Show the login modal when the login button is clicked
-        // loginButton.onclick = function() {
-        //     modal.style.display = "block";
-        // }
-
-        // logoutButton.onclick = function() {
-        //     handleLogout();
-        // }
-
-        // switchRegisterButton.onclick = switchToRegister;
-
-        // switchLoginButton.onclick = switchToLogin;
-
-        // // when the user clicks on <span> (x), close the modal
-        // modalCloseButton.onclick = function() {
-        //     modal.style.display = "none";
-        // }
-
-        // // when the user clicks anywhere outside of the modal, close it
-        // window.onclick = function(event) {
-        //     if (event.target == modal) {
-        //         modal.style.display = "none";
-        //     }
-        // }
-
-        // // login form submission
-        // loginForm.onsubmit = function(event) {
-        //     loginError.textContent = "";
-        //     event.preventDefault();
-        //     var username = document.getElementById("loginUsername");
-        //     var password = document.getElementById("loginPassword");
-
-        //     fetch(`${serverUrl}/login`, {
-        //         method: 'POST',
-        //         headers: {
-        //             'Content-Type': 'application/json',
-        //         },
-        //         body: JSON.stringify({
-        //             username: username.value,
-        //             password: password.value,
-        //         })
-        //     }).then((response) => {
-        //         if (!response.ok) {
-        //             return response.json().then((body) => {
-        //                 throw body.errors;
-        //             });
-        //         }
-        //         return response.json();
-        //     }).then((data) => {
-        //         username.value = "";
-        //         password.value = "";
-        //         handleLogin(data.access_token);
-        //     }).catch((errors) => {
-        //         console.error('Login error:', errors);
-        //         loginError.innerHTML = errors.join("<br>");
-        //     });
-        // }
-
-        // // register form submission
-        // registerForm.onsubmit = function(event) {
-        //     registerError.textContent = "";
-        //     event.preventDefault();
-        //     var username = document.getElementById("registerUsername");
-        //     var email = document.getElementById("registerEmail");
-        //     var password = document.getElementById("registerPassword");
-
-        //     fetch(`${serverUrl}/register`, {
-        //         method: 'POST',
-        //         headers: {
-        //             'Content-Type': 'application/json',
-        //         },
-        //         body: JSON.stringify({
-        //             username: username.value,
-        //             email: email.value,
-        //             password: password.value,
-        //         })
-        //     }).then((response) => {
-        //         if (!response.ok) {
-        //             return response.json().then((body) => {
-        //                 throw body.errors;
-        //             });
-        //         }
-        //         return response.json();
-        //     }).then((data) => {
-        //         username.value = "";
-        //         email.value = "";
-        //         password.value = "";
-        //         switchToLogin();
-        //     }).catch((errors) => {
-        //         console.error('Register error:', errors);
-        //         registerError.innerHTML = errors.join("<br>");
-        //     });
-        // }
+        logoutButton.onclick = function() {
+            handleLogout();
+        }
     </script>
     
 </body>
