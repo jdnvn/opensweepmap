@@ -238,11 +238,12 @@
         </div>
     </div>
     <div class="authed-overlay" id="authedOverlay">
-        <label class="switch">
+        <!-- <label class="switch">
             <input type="checkbox" id="toggleMode">
             <span class="slider round"></span>
         </label>
-        <span id="modeLabel">Normal Mode</span>
+        <span id="modeLabel">Normal Mode</span> -->
+        <button id="editorButton">View in editor</button>
     </div>
     <div id='map'></div>
     </div>
@@ -342,7 +343,7 @@
         };
 
         // Attach the toggle function to the slider switch
-        document.getElementById('toggleMode').addEventListener('change', toggleMode);
+        // document.getElementById('toggleMode').addEventListener('change', toggleMode);
 
         var userCoords;
 
@@ -367,9 +368,20 @@
                         'case',
                         ['boolean', ['feature-state', 'highlighted'], false], 5,
                         2
+                    ],
+                    'line-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['to-number', ['coalesce', ['get', 'hours_to_next_sweep'], -1]],
+                        12, '#FF0000',  // red for immediate sweep
+                        24, '#FFA500',  // orange for sweep in next 24 hours
+                        36, '#FFFF00',  // yellow for sweep in next 36 hours
+                        48, '#008000',  // green for sweep in next 2 days
                     ]
                 }
             });
+
+            map.setFilter('sidewalks-layer', ['==', ['get', 'status'], 'ok']);
 
             // enable highlighting of sidewalks
             map.addLayer({
@@ -384,7 +396,7 @@
             });
 
             // set the default mode
-            setNormalMode();
+            // setNormalMode();
 
             map.on("click", "sidewalks-layer-click", (e) => {
                 const sidewalkId = e.features[0].id;
@@ -619,6 +631,7 @@
         var loginForm = document.getElementById("loginForm");
         var registerError = document.getElementById("registerError");
         var loginError = document.getElementById("loginError");
+        var editorButton = document.getElementById("editorButton");
 
         async function handleLogin(token) {
             localStorage.setItem(authTokenKey, token);
@@ -716,6 +729,10 @@
             if (event.target == modal) {
                 modal.style.display = "none";
             }
+        }
+
+        editorButton.onclick = function() {
+            window.location.href = '/editor';
         }
 
         // login form submission
