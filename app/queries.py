@@ -146,6 +146,10 @@ async def get_sidewalks_tiles_bytes(
     return result.scalar()
 
 
+@cached(
+    ttl=600,
+    cache=Cache.MEMORY
+)
 async def get_sidewalks_geojson(session: AsyncSession) -> Dict:
     query = (
         select(
