@@ -145,6 +145,46 @@ async def get_sidewalks_tiles_bytes(
     return result.scalar()
 
 
+def get_sidewalks_geojson(session: AsyncSession) -> Dict:
+    query = (
+        select(
+            Sidewalk.id,
+            Sidewalk.schedule_id,
+            Sidewalk.status,
+            func.ST_AsGeoJSON(Sidewalk.geometry).label('geojson'),
+            Schedule.street_name,
+            Schedule.suburb_name,
+            Schedule.side,
+            Schedule.start_time,
+            Schedule.end_time,
+            Schedule.from_street_name,
+            Schedule.to_street_name,
+            Schedule.has_duplicates,
+            Schedule.one_way,
+            Schedule.week_1,
+            Schedule.week_2,
+            Schedule.week_3,
+            Schedule.week_4,
+            Schedule.week_5,
+            Schedule.sunday,
+            Schedule.monday,
+            Schedule.tuesday,
+            Schedule.wednesday,
+            Schedule.thursday,
+            Schedule.friday,
+            Schedule.saturday,
+            Schedule.every_day,
+            Schedule.year_round,
+            Schedule.north_end_pilot
+        ).outerjoin(Schedule, Sidewalk.schedule_id == Schedule.id)
+    )
+
+    result = await session.execute(query)
+    sidewalks_data = [row._asdict() for row in result.all()]
+
+    return sidewalks_data
+
+
 async def get_sidewalk_by_id(
     id: int,
     session: AsyncSession
