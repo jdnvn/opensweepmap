@@ -11,6 +11,7 @@ from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from fastapi.logger import logger as fastapi_logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, select, text, update
+from utils import schedule_to_color
 from db import get_session
 from auth import create_access_token, verify_password, get_password_hash, verify_access_token, MAX_USERNAME_LENGTH
 from queries import (get_sidewalks_tiles_bytes,
@@ -199,6 +200,7 @@ async def put_sidewalk(id: int, request: dict, session: AsyncSession = Depends(g
         await session.commit()
 
         updated_sidewalk = await get_sidewalk_by_id(id, session)
+        updated_sidewalk['color'] = schedule_to_color(schedule_id)
     except Exception as e:
         logger.info(f"ERROR: {str(e)}")
         return JSONResponse(status_code=500, content={'message': 'something went wrong'})
