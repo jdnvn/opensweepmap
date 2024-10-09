@@ -138,8 +138,8 @@
                 paint: {
                     'line-width': [
                         'case',
-                        ['boolean', ['feature-state', 'highlighted'], false], 5,
-                        2
+                        ['boolean', ['feature-state', 'highlighted'], false], 7,
+                        4
                     ],
                     'line-color': [
                         'match', 
@@ -423,7 +423,12 @@
                     '#000000'
                 ]);
             } else {
-                map.setPaintProperty('sidewalks-layer', 'line-color', ['get', 'color']);
+                map.setPaintProperty('sidewalks-layer', 'line-color', [
+                    'case',
+                    ['==', ['get', 'status'], 'missing'],
+                    '#000000',
+                    ['get', 'color']
+                ]);
             }
         }
     </script>
