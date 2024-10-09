@@ -24,6 +24,69 @@
             font-family: Arial, sans-serif;
             display: block;
         }
+        .slider-container {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1;
+            font-family: Arial, sans-serif;
+            align-items: center;
+        }
+        /* Slider switch styling */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+            margin-right: 10px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 4px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #2196F3;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        /* Label styling */
+        #modeLabel {
+            font-size: 14px;
+            font-weight: bold;
+        }
         @media (max-width: 600px) {
             input, textarea, select {
                 font-size: 16px;
@@ -32,13 +95,21 @@
     </style>
 </head>
 <body>
+    <div class="slider-container">
+        <label class="switch">
+            <input type="checkbox" id="toggleMode">
+            <span class="slider round"></span>
+        </label>
+        <span id="modeLabel">Edit View</span>
+    </div>
     <button id="logoutButton" class="auth-button">Log out</button>
     <div id='map'></div>
     <script>
-        if (!localStorage.getItem("SM_TOKEN")) {
+        var authTokenKey = "SM_TOKEN";
+        if (!localStorage.getItem(authTokenKey)) {
             window.location.href = '/';
         }
-        var authTokenKey = "SM_TOKEN";
+        var editView = true;
         var serverUrl = '{{ server_url }}';
         const sidewalksUrl = `${serverUrl}/sidewalks/geojson`;
 
@@ -327,6 +398,33 @@
 
         logoutButton.onclick = function() {
             handleLogout();
+        }
+
+        var toggleMode = document.getElementById("toggleMode");
+
+        function hashToColor(hash) {
+            var color = '#';
+            for (var i = 0; i < 3; i++) {
+                var value = (hash >> (i * 8)) & 0xFF;
+                color += ('00' + value.toString(16)).substr(-2);
+            }
+            return color;
+        }
+
+        toggleMode.onclick = function() {
+            editView = !editView;
+            if (editView) {
+                map.setPaintProperty('sidewalks-layer', 'line-color', [
+                    'match', 
+                    ['get', 'status'],
+                    'missing', '#00ffff',  // cyan for missing
+                    'unresolved', '#FF0000',  // red for unresolved
+                    'ok', '#327da8',  // blue for ok
+                    '#000000'
+                ]);
+            } else {
+                map.setPaintProperty('sidewalks-layer', 'line-color', ['get', 'color']);
+            }
         }
     </script>
     
