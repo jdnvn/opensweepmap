@@ -156,7 +156,7 @@
                 }
             });
 
-            // enable highlighting of sidewalks
+            // enables highlighting of sidewalks
             map.addLayer({
                 id: "sidewalks-layer-click",
                 type: "line",
@@ -171,7 +171,6 @@
                 const sidewalkId = e.features[0].id;
                 const sidewalkData = e.features[0].properties;
 
-                console.log(e.originalEvent.shiftKey);
                 if (!e.originalEvent.shiftKey) {
                     // If the shift key is not down, deselect all sidewalks
                     for (let id of highlightedSidewalkIds) {
@@ -339,7 +338,6 @@
                 })
             })
             .then(response => {
-                console.log(response)
                 if (!response.ok) {
                     throw new Error('Network response was not ok');
                 }
@@ -358,7 +356,6 @@
                         }
                     ],
                 };
-                console.log(updateRequest)
                 const source = map.getSource('sidewalks');
                 source.updateData(updateRequest);
             })

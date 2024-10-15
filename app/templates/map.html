@@ -246,7 +246,6 @@
         var authTokenKey = "SM_TOKEN";
         var serverUrl = '{{ server_url }}';
         const sidewalksUrl = `${serverUrl}/sidewalks/tiles/{z}/{x}/{y}.mvt`;
-        let isEditMode = false;
         let highlightedSidewalkId = null;
 
         const timeOptions = {
@@ -281,50 +280,10 @@
         });
 
         geolocate.on('error', function(e) {
-            console.log(`geolocation error ${e.message}`);
+            console.error(`geolocation error ${e.message}`);
         });
 
         map.addControl(geolocate, 'bottom-left');
-
-        function setEditMode() {
-            isEditMode = true;
-            const modeLabel = document.getElementById('modeLabel');
-            modeLabel.innerText = "Edit Mode";
-            map.setPaintProperty('sidewalks-layer', 'line-color', [
-                'match', 
-                ['get', 'status'],
-                'missing', '#00ffff',  // cyan for missing
-                'unresolved', '#FF0000',  // red for unresolved
-                'ok', '#327da8',  // blue for ok
-                '#000000'
-            ]);
-
-            map.setFilter('sidewalks-layer', null);
-        }
-
-        function setNormalMode() {
-            isEditMode = false;
-            const modeLabel = document.getElementById('modeLabel');
-            modeLabel.innerText = "Normal Mode";
-            map.setPaintProperty('sidewalks-layer', 'line-color', [
-                'interpolate',
-                ['linear'],
-                ['to-number', ['coalesce', ['get', 'hours_to_next_sweep']]],
-                12, '#FF0000',  // red for immediate sweep
-                24, '#FFA500',  // orange for sweep in next 24 hours
-                36, '#FFFF00',  // yellow for sweep in next 36 hours
-                48, '#008000',  // green for sweep in next 2 days
-            ]);
-            map.setFilter('sidewalks-layer', ['==', ['get', 'status'], 'ok']);
-        }
-
-        function toggleMode() {
-            if (isEditMode) {
-                setNormalMode();
-            } else {
-                setEditMode();
-            }
-        }
 
         const getFormattedSweepTimes = (nextSweepDate, startTime, endTime) => {
             const nextSweepStart = new Date(`${nextSweepDate} ${startTime}`);
@@ -396,10 +355,6 @@
                 const sidewalkId = e.features[0].id;
                 const sidewalkData = e.features[0].properties;
 
-                if (!isEditMode && sidewalkData.status != 'ok') {
-                    return;
-                }
-
                 if (highlightedSidewalkId) {
                     map.setFeatureState(
                         { source: 'sidewalks', sourceLayer: "default", id: highlightedSidewalkId },
@@ -412,16 +367,7 @@
                     { highlighted: true }
                 );
 
-                var popupHtml = null;
-                if (isEditMode) {
-                    popupHtml = getEditPopup(
-                        sidewalkId,
-                        sidewalkData.schedule_id,
-                        sidewalkData.status
-                    );
-                } else {
-                    popupHtml = getInfoPopup(sidewalkData);
-                }
+                var popupHtml = getInfoPopup(sidewalkData);;
 
                 new maplibregl.Popup({ offset: 10 })
                     .setLngLat(e.lngLat)
@@ -463,33 +409,16 @@
                     const fromStreet = feature.properties.from_street_name;
                     const toStreet = feature.properties.to_street_name;
 
-                    // do not show tooltip for missing or unresolved sidewalks in normal mode
-                    if (!isEditMode && status != 'ok') {
-                        return;
-                    }
-
                     map.getCanvas().style.cursor = 'pointer';
                     tooltip.remove();
 
-                    var tooltipContent = "";
-                    if (isEditMode) {
-                        tooltipContent += `
-                            <strong>Schedule ID:</strong> ${scheduleId}<br/>
-                            <strong>Status:</strong> ${status}<br/>
-                        `;
-                    }
-                    tooltipContent += `
+                    const [nextSweepStart, nextSweepEnd] = getFormattedSweepTimes(feature.properties.next_sweep_at, feature.properties.start_time, feature.properties.end_time);
+                    var tooltipContent = `
                         <strong>Street:</strong> ${streetName} ${getStreetSideText(side)}<br/>
                         <strong>From:</strong> ${fromStreet}<br/>
                         <strong>To:</strong> ${toStreet}<br/>
+                        <strong>Next:</strong> ${nextSweepStart} to ${nextSweepEnd}<br/>
                     `;
-                    if (!isEditMode) {
-                        const [nextSweepStart, nextSweepEnd] = getFormattedSweepTimes(feature.properties.next_sweep_at, feature.properties.start_time, feature.properties.end_time);
-
-                        tooltipContent += `
-                            <strong>Next:</strong> ${nextSweepStart} to ${nextSweepEnd}<br/>
-                        `;
-                    }
 
                     tooltip
                         .setLngLat(e.lngLat)
@@ -513,23 +442,6 @@
             }
         }
 
-        function getEditPopup(id, schedule_id, status) {
-            return `
-                <form id="popupForm">
-                    <label for="schedule_id">Corrected Schedule ID:</label><br>
-                    <input type="text" id="schedule_id" name="schedule_id" value="${schedule_id}"><br>
-                    
-                    <label for="sidewalk_status">Sidewalk Status:</label>
-                    <select name="sidewalk_status" id="sidewalk_status">
-                        <option value="missing" ${status === 'missing' ? 'selected' : ''}>Missing</option>
-                        <option value="unresolved" ${status === 'unresolved' ? 'selected' : ''}>Unresolved</option>
-                        <option value="ok" ${status === 'ok' ? 'selected' : ''}>OK</option>
-                    </select>
-                    <button type="button" onclick="updateSidewalk(${id})">Submit</button>
-                </form>
-            `;
-        }
-
         function getInfoPopup(sidewalkData) {
             const [nextSweepStart, nextSweepEnd] = getFormattedSweepTimes(sidewalkData.next_sweep_at, sidewalkData.start_time, sidewalkData.end_time);
 
@@ -541,45 +453,6 @@
                     <strong>Next:</strong> ${nextSweepStart} to ${nextSweepEnd}<br/>
                 </div>
             `;
-        }
-
-        function updateSidewalk(sidewalkId) {
-            const accessToken = localStorage.getItem(authTokenKey);
-            if (!accessToken) {
-                console.error("Not authenticated");
-                return;
-            }
-
-            var scheduleId = document.getElementById('schedule_id').value;
-            var status = document.getElementById('sidewalk_status').value;
-
-            fetch(`${serverUrl}/sidewalks/${sidewalkId}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${accessToken}`,
-                },
-                body: JSON.stringify({
-                    schedule_id: scheduleId,
-                    status: status,
-                })
-            })
-            .then(response => {
-                console.log(response)
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log('Success:', data.data);
-                // TODO: workaround to fetch new tiles on update
-                // eventually want make it update (probably with websockets) on every client's map
-                map.getSource('sidewalks').setTiles([sidewalksUrl]);
-            })
-            .catch(error => {
-                console.error('Error:', error);
-            });
         }
 
         async function fetchCurrentUser() {
@@ -641,9 +514,6 @@
         async function handleLogout() {
             localStorage.removeItem(authTokenKey);
             showUnauthedUI();
-            if (isEditMode) {
-                setNormalMode();
-            }
         }
 
         function showUnauthedUI() {

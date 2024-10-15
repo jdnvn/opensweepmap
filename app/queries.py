@@ -135,6 +135,8 @@ async def get_sidewalks_tiles_bytes(
         LEFT JOIN
             next_sweep_times ON schedules.id = next_sweep_times.id
         WHERE
+            sidewalks.status = 'ok'
+        AND
             ST_Intersects(sidewalks.geometry, tile_bounds_cte.geom_4326)
     )
     SELECT 
@@ -260,7 +262,7 @@ async def create_user(username: str, email: str, hashed_password: str, session: 
         username=username,
         email=email,
         hashed_password=hashed_password,
-        role="adjuster"
+        role="standard"
     )
 
     session.add(new_user)
