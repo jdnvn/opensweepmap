@@ -69,7 +69,7 @@ async def get_sidewalks_tiles_bytes(
             next_sweep_day nsd
         WHERE
             (nsd.day > CURRENT_DATE::timestamp
-            OR (s.start_time::time > CURRENT_TIME))
+            OR (s.end_time::time > CURRENT_TIME))
     ),
     next_sweep_times AS (
         SELECT DISTINCT ON (s.id)

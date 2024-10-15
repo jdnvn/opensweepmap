@@ -309,8 +309,7 @@
             map.setPaintProperty('sidewalks-layer', 'line-color', [
                 'interpolate',
                 ['linear'],
-                ['to-number', ['coalesce', ['get', 'hours_to_next_sweep'], -1]],
-                -1, '#000000', // black if no data
+                ['to-number', ['coalesce', ['get', 'hours_to_next_sweep']]],
                 12, '#FF0000',  // red for immediate sweep
                 24, '#FFA500',  // orange for sweep in next 24 hours
                 36, '#FFFF00',  // yellow for sweep in next 36 hours
