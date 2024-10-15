@@ -12,7 +12,9 @@ from sqlalchemy import and_, select, text, update, func, case, DateTime, cast
 from sqlalchemy.types import TIMESTAMP
 from sqlalchemy.ext.asyncio import AsyncSession
 from models import Sidewalk, Schedule, User, SidewalkAdjustment
+from utils import schedule_to_color
 from datetime import datetime, timedelta
+import json
 
 @cached(
     ttl=600,
@@ -67,7 +69,7 @@ async def get_sidewalks_tiles_bytes(
             next_sweep_day nsd
         WHERE
             (nsd.day > CURRENT_DATE::timestamp
-            OR (s.start_time::time > CURRENT_TIME))
+            OR (s.end_time::time > CURRENT_TIME))
     ),
     next_sweep_times AS (
         SELECT DISTINCT ON (s.id)
@@ -133,6 +135,8 @@ async def get_sidewalks_tiles_bytes(
         LEFT JOIN
             next_sweep_times ON schedules.id = next_sweep_times.id
         WHERE
+            sidewalks.status = 'ok'
+        AND
             ST_Intersects(sidewalks.geometry, tile_bounds_cte.geom_4326)
     )
     SELECT 
@@ -143,6 +147,52 @@ async def get_sidewalks_tiles_bytes(
 
     result = await session.execute(query, {"z": z, "x": x, "y": y})
     return result.scalar()
+
+
+@cached(
+    ttl=600,
+    cache=Cache.MEMORY
+)
+async def get_sidewalks_geojson(session: AsyncSession) -> Dict:
+    query = (
+        select(
+            Sidewalk.id,
+            Sidewalk.schedule_id,
+            Sidewalk.status,
+            func.ST_AsGeoJSON(Sidewalk.geometry).label('geojson'),
+            Schedule.street_name,
+            Schedule.suburb_name,
+            Schedule.side,
+            Schedule.start_time,
+            Schedule.end_time,
+            Schedule.from_street_name,
+            Schedule.to_street_name,
+            Schedule.has_duplicates,
+            Schedule.one_way,
+            Schedule.week_1,
+            Schedule.week_2,
+            Schedule.week_3,
+            Schedule.week_4,
+            Schedule.week_5,
+            Schedule.sunday,
+            Schedule.monday,
+            Schedule.tuesday,
+            Schedule.wednesday,
+            Schedule.thursday,
+            Schedule.friday,
+            Schedule.saturday,
+            Schedule.every_day,
+            Schedule.year_round,
+            Schedule.north_end_pilot
+        ).outerjoin(Schedule, Sidewalk.schedule_id == Schedule.id)
+    )
+
+    result = await session.execute(query)
+    sidewalks_data = [row._asdict() for row in result.all()]
+    sidewalks_feature_collection = [{"type": "Feature", "id": row["id"], "geometry": json.loads(row.pop("geojson")), "properties": {**row, "color": schedule_to_color(row["schedule_id"])}} for row in sidewalks_data]
+    sidewalks_geojson = {"type": "FeatureCollection", "features": sidewalks_feature_collection}
+
+    return sidewalks_geojson
 
 
 async def get_sidewalk_by_id(
@@ -212,7 +262,7 @@ async def create_user(username: str, email: str, hashed_password: str, session: 
         username=username,
         email=email,
         hashed_password=hashed_password,
-        role="adjuster"
+        role="standard"
     )
 
     session.add(new_user)

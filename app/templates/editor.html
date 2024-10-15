@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>sweepmaps editor</title>
+    
+    <script src='https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js'></script>
+    <link href='https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css' rel='stylesheet' />
+
+    <style>
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+        .auth-button {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1;
+            font-family: Arial, sans-serif;
+            display: block;
+        }
+        .slider-container {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1;
+            font-family: Arial, sans-serif;
+            align-items: center;
+        }
+        /* Slider switch styling */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+            margin-right: 10px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 4px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #2196F3;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        /* Label styling */
+        #modeLabel {
+            font-size: 14px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        @media (max-width: 600px) {
+            input, textarea, select {
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="slider-container">
+        <button id="leaveEditor">Leave editor</button>
+        <span id="modeLabel">Toggle View</span>
+        <label class="switch">
+            <input type="checkbox" id="toggleMode">
+            <span class="slider round"></span>
+        </label>
+    </div>
+    <button id="logoutButton" class="auth-button">Log out</button>
+    <div id='map'></div>
+    <script>
+        var authTokenKey = "SM_TOKEN";
+        if (!localStorage.getItem(authTokenKey)) {
+            window.location.href = '/';
+        }
+        var editView = true;
+        var serverUrl = '{{ server_url }}';
+        const sidewalksUrl = `${serverUrl}/sidewalks/geojson`;
+
+        var map = new maplibregl.Map({
+            container: 'map',
+            style: 'https://api.maptiler.com/maps/5a2d1bdc-0430-4aac-898b-ef3a7a500b73/style.json?key=SLnm1JNOPIPyy6cm6NrF',
+            center: [-71.069216, 42.342999],
+            zoom: 18,
+            boxZoom: false,
+        });
+
+        let highlightedSidewalkId = null;
+        let highlightedSidewalkIds = [];
+
+        map.on("load", () => {
+
+            // add the tile source from FastAPI tile server
+            map.addSource("sidewalks", {
+                type: "geojson",
+                data: sidewalksUrl,
+            });
+
+            // enable highlighting of sidewalks
+            map.addLayer({
+                id: "sidewalks-layer",
+                type: "line",
+                source: "sidewalks",
+                paint: {
+                    'line-width': [
+                        'case',
+                        ['boolean', ['feature-state', 'highlighted'], false], 7,
+                        4
+                    ],
+                    'line-color': [
+                        'match', 
+                        ['get', 'status'],
+                        'missing', '#00ffff',  // cyan for missing
+                        'unresolved', '#FF0000',  // red for unresolved
+                        'ok', '#327da8',  // blue for ok
+                        '#000000'
+                    ],
+                }
+            });
+
+            // enables highlighting of sidewalks
+            map.addLayer({
+                id: "sidewalks-layer-click",
+                type: "line",
+                source: "sidewalks",
+                paint: {
+                    'line-color': 'transparent',
+                    'line-width': 20
+                }
+            });
+
+            map.on("click", "sidewalks-layer-click", (e) => {
+                const sidewalkId = e.features[0].id;
+                const sidewalkData = e.features[0].properties;
+
+                if (!e.originalEvent.shiftKey) {
+                    // If the shift key is not down, deselect all sidewalks
+                    for (let id of highlightedSidewalkIds) {
+                        map.setFeatureState(
+                            { source: 'sidewalks', id: id },
+                            { highlighted: false }
+                        );
+                    }
+                    highlightedSidewalkIds = [];
+                }
+
+                // Check if this sidewalk is already selected
+                const index = highlightedSidewalkIds.indexOf(sidewalkId);
+                if (index > -1) {
+                    // If it is, deselect it
+                    map.setFeatureState(
+                        { source: 'sidewalks', id: sidewalkId },
+                        { highlighted: false }
+                    );
+                    highlightedSidewalkIds.splice(index, 1);
+                } else {
+                    // If it's not, select it
+                    map.setFeatureState(
+                        { source: 'sidewalks', id: sidewalkId },
+                        { highlighted: true }
+                    );
+                    highlightedSidewalkIds.push(sidewalkId);
+                }
+                // do a popup with ALL the selected sidewalks
+                var popupHtml = getEditPopup(
+                    sidewalkData.schedule_id,
+                    sidewalkData.status
+                );
+
+                new maplibregl.Popup({ offset: 10 })
+                    .setLngLat(e.lngLat)
+                    .setHTML(popupHtml)
+                    .addTo(map);
+            });
+
+            map.on("click", (e) => {
+                tooltip.remove();
+                const features = map.queryRenderedFeatures(e.point, {
+                    layers: ["sidewalks-layer-click"]
+                });
+
+                if (!features.length) {
+                    if (highlightedSidewalkIds.length > 0) {
+                        for (let id of highlightedSidewalkIds) {
+                            map.setFeatureState(
+                                { source: 'sidewalks', id: id },
+                                { highlighted: false }
+                            );
+                        }
+                        highlightedSidewalkIds = [];
+                    }
+                }
+            });
+
+            const tooltip = new maplibregl.Popup({
+                closeButton: false,
+                closeOnClick: false,
+                offset: 10,
+            });
+
+            map.on("mousemove", "sidewalks-layer-click", (e) => {
+                if (e.features.length > 0) {
+                    const feature = e.features[0];
+
+                    const scheduleId = feature.properties.schedule_id;
+                    const status = feature.properties.status;
+                    const streetName = feature.properties.street_name;
+                    const side = feature.properties.side;
+                    const fromStreet = feature.properties.from_street_name;
+                    const toStreet = feature.properties.to_street_name;
+
+                    map.getCanvas().style.cursor = 'pointer';
+                    tooltip.remove();
+
+                    var tooltipContent = `
+                        <strong>Schedule ID:</strong> ${scheduleId}<br/>
+                        <strong>Street:</strong> ${streetName} ${getStreetSideText(side)}<br/>
+                        <strong>From:</strong> ${fromStreet}<br/>
+                        <strong>To:</strong> ${toStreet}<br/>
+                        <strong>Status:</strong> ${status}<br/>
+                    `;
+
+                    tooltip
+                        .setLngLat(e.lngLat)
+                        .setHTML(tooltipContent)
+                        .addTo(map);
+                }
+            });
+
+            // Remove the popup when the mouse leaves the layer
+            map.on("mouseleave", "sidewalks-layer-click", () => {
+                tooltip.remove();
+                map.getCanvas().style.cursor = '';
+            });
+        });
+
+        function getStreetSideText(side) {
+            if (side == 'none') {
+                return "";
+            } else {
+                return `(${side} side${side == 'both' ? 's' : ''})`;
+            }
+        }
+
+        function getEditPopup(schedule_id, status) {
+            return `
+                <form id="popupForm">
+                    <label for="schedule_id">Corrected Schedule ID:</label><br>
+                    <input type="text" id="schedule_id" name="schedule_id" value="${schedule_id}"><br>
+                    
+                    <label for="sidewalk_status">Sidewalk Status:</label>
+                    <select name="sidewalk_status" id="sidewalk_status">
+                        <option value="missing" ${status === 'missing' ? 'selected' : ''}>Missing</option>
+                        <option value="unresolved" ${status === 'unresolved' ? 'selected' : ''}>Unresolved</option>
+                        <option value="ok" ${status === 'ok' ? 'selected' : ''}>OK</option>
+                    </select>
+                    <button type="button" onclick="updateHighlightedSidewalks()">Submit</button>
+                </form>
+            `;
+        }
+
+        function getInfoPopup(sidewalkData) {
+            const [nextSweepStart, nextSweepEnd] = getFormattedSweepTimes(sidewalkData.next_sweep_at, sidewalkData.start_time, sidewalkData.end_time);
+
+            return `
+                <div id="popupInfo">
+                    <strong>Street:</strong> ${sidewalkData.street_name} (${sidewalkData.side} side)<br/>
+                    <strong>From:</strong> ${sidewalkData.from_street_name}<br/>
+                    <strong>To:</strong> ${sidewalkData.to_street_name}<br/>
+                    <strong>Next:</strong> ${nextSweepStart} to ${nextSweepEnd}<br/>
+                </div>
+            `;
+        }
+
+        function updateHighlightedSidewalks() {
+            var scheduleId = document.getElementById('schedule_id').value;
+            var status = document.getElementById('sidewalk_status').value;
+
+            for (let sidewalkId of highlightedSidewalkIds) {
+                updateSidewalk(sidewalkId, scheduleId, status);
+            }
+        }
+
+        function updateSidewalk(sidewalkId, scheduleId, status) {
+            const accessToken = localStorage.getItem(authTokenKey);
+            if (!accessToken) {
+                console.error("Not authenticated");
+                return;
+            }
+
+            fetch(`${serverUrl}/sidewalks/${sidewalkId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`,
+                },
+                body: JSON.stringify({
+                    schedule_id: scheduleId,
+                    status: status,
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Success:', data.data);
+                const updatedProperties = Object.entries(data.data).map(([key, value]) => {
+                    return { key, value };
+                });
+                const updateRequest = {
+                    update: [
+                        {
+                            id: sidewalkId,
+                            addOrUpdateProperties: updatedProperties,
+                        }
+                    ],
+                };
+                const source = map.getSource('sidewalks');
+                source.updateData(updateRequest);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+        async function fetchCurrentUser() {
+            const accessToken = localStorage.getItem(authTokenKey);
+            if (!accessToken) {
+                return Promise.reject(null);
+            }
+
+            fetch(`${serverUrl}/me`, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Success:', data.data);
+                return Promise.resolve(data.data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                handleLogout();
+                return Promise.reject(null);
+            })
+        }
+
+        var user;
+
+        var logoutButton = document.getElementById("logoutButton");
+
+        async function handleLogin(token) {
+            localStorage.setItem(authTokenKey, token);
+            try {
+                user = await fetchCurrentUser();
+            } catch (error) {
+                console.error('Error:', error);
+                window.location.href = '/';
+            }
+        }
+
+        async function handleLogout() {
+            localStorage.removeItem(authTokenKey);
+            window.location.href = '/';
+        }
+
+        // Hide the authed overlay when the page loads if the user is not authenticated
+        window.onload = async function() {
+            const token = localStorage.getItem(authTokenKey);
+            if (token) {
+                await handleLogin(token);
+            } else {
+                window.location.href = '/';
+            }
+        }
+
+        logoutButton.onclick = function() {
+            handleLogout();
+        }
+
+        var toggleMode = document.getElementById("toggleMode");
+        var leaveEditorButton = document.getElementById("leaveEditor");
+
+        function hashToColor(hash) {
+            var color = '#';
+            for (var i = 0; i < 3; i++) {
+                var value = (hash >> (i * 8)) & 0xFF;
+                color += ('00' + value.toString(16)).substr(-2);
+            }
+            return color;
+        }
+
+        toggleMode.onclick = function() {
+            editView = !editView;
+            if (editView) {
+                map.setPaintProperty('sidewalks-layer', 'line-color', [
+                    'match', 
+                    ['get', 'status'],
+                    'missing', '#00ffff',  // cyan for missing
+                    'unresolved', '#FF0000',  // red for unresolved
+                    'ok', '#327da8',  // blue for ok
+                    '#000000'
+                ]);
+            } else {
+                map.setPaintProperty('sidewalks-layer', 'line-color', [
+                    'case',
+                    ['==', ['get', 'status'], 'missing'],
+                    '#000000',
+                    ['get', 'color']
+                ]);
+            }
+        }
+
+        leaveEditorButton.onclick = function() {
+            window.location.href = '/';
+        }
+    </script>
+    
+</body>
+</html>

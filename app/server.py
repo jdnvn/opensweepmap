@@ -11,9 +11,16 @@ from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from fastapi.logger import logger as fastapi_logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, select, text, update
-from queries import get_sidewalks_tiles_bytes, get_sidewalk_by_id, get_user, create_user, create_sidewalk_adjustment
+from utils import schedule_to_color
 from db import get_session
 from auth import create_access_token, verify_password, get_password_hash, verify_access_token, MAX_USERNAME_LENGTH
+from queries import (get_sidewalks_tiles_bytes,
+                     get_sidewalk_by_id,
+                     get_user,
+                     create_user,
+                     create_sidewalk_adjustment,
+                     get_sidewalks_geojson
+                    )
 
 SERVER_PORT = os.environ.get('SERVER_PORT', 8000)
 SERVER_HOST = os.environ.get('SERVER_HOST')
@@ -38,6 +45,19 @@ async def map(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="map.html",
+        context={
+            "server_url": SERVER_URL
+        },
+    )
+
+
+@app.get("/editor", response_class=HTMLResponse)
+async def editor(request: Request):
+    # if current_user.role not in ['admin', 'adjuster']:
+    #     return JSONResponse(status_code=403, content={'message': 'forbidden'})
+    return templates.TemplateResponse(
+        request=request,
+        name="editor.html",
         context={
             "server_url": SERVER_URL
         },
@@ -133,6 +153,13 @@ async def get_sidewalk_tiles(
     )
 
 
+@app.get('/sidewalks/geojson')
+async def get_sidewalks(session: AsyncSession = Depends(get_session)):
+    logger.info("GET /sidewalks/geojson called")
+    sidewalks_geojson = await get_sidewalks_geojson(session)
+    return JSONResponse(status_code=200, content=sidewalks_geojson)
+
+
 @app.put('/sidewalks/{id}')
 async def put_sidewalk(id: int, request: dict, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     logger.info("PUT /sidewalks/{id}")
@@ -173,6 +200,7 @@ async def put_sidewalk(id: int, request: dict, session: AsyncSession = Depends(g
         await session.commit()
 
         updated_sidewalk = await get_sidewalk_by_id(id, session)
+        updated_sidewalk['color'] = schedule_to_color(schedule_id)
     except Exception as e:
         logger.info(f"ERROR: {str(e)}")
         return JSONResponse(status_code=500, content={'message': 'something went wrong'})
