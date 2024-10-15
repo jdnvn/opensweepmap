@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>opensweepmap</title>
+    <title>sweepmaps editor</title>
     
     <script src='https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js'></script>
     <link href='https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css' rel='stylesheet' />
@@ -86,6 +86,7 @@
         #modeLabel {
             font-size: 14px;
             font-weight: bold;
+            margin-left: 10px;
         }
         @media (max-width: 600px) {
             input, textarea, select {
@@ -96,11 +97,12 @@
 </head>
 <body>
     <div class="slider-container">
+        <button id="leaveEditor">Leave editor</button>
+        <span id="modeLabel">Toggle View</span>
         <label class="switch">
             <input type="checkbox" id="toggleMode">
             <span class="slider round"></span>
         </label>
-        <span id="modeLabel">Edit View</span>
     </div>
     <button id="logoutButton" class="auth-button">Log out</button>
     <div id='map'></div>
@@ -117,10 +119,12 @@
             container: 'map',
             style: 'https://api.maptiler.com/maps/5a2d1bdc-0430-4aac-898b-ef3a7a500b73/style.json?key=SLnm1JNOPIPyy6cm6NrF',
             center: [-71.069216, 42.342999],
-            zoom: 18
+            zoom: 18,
+            boxZoom: false,
         });
 
         let highlightedSidewalkId = null;
+        let highlightedSidewalkIds = [];
 
         map.on("load", () => {
 
@@ -167,20 +171,37 @@
                 const sidewalkId = e.features[0].id;
                 const sidewalkData = e.features[0].properties;
 
-                if (highlightedSidewalkId) {
+                console.log(e.originalEvent.shiftKey);
+                if (!e.originalEvent.shiftKey) {
+                    // If the shift key is not down, deselect all sidewalks
+                    for (let id of highlightedSidewalkIds) {
+                        map.setFeatureState(
+                            { source: 'sidewalks', id: id },
+                            { highlighted: false }
+                        );
+                    }
+                    highlightedSidewalkIds = [];
+                }
+
+                // Check if this sidewalk is already selected
+                const index = highlightedSidewalkIds.indexOf(sidewalkId);
+                if (index > -1) {
+                    // If it is, deselect it
                     map.setFeatureState(
-                        { source: 'sidewalks', id: highlightedSidewalkId },
+                        { source: 'sidewalks', id: sidewalkId },
                         { highlighted: false }
                     );
+                    highlightedSidewalkIds.splice(index, 1);
+                } else {
+                    // If it's not, select it
+                    map.setFeatureState(
+                        { source: 'sidewalks', id: sidewalkId },
+                        { highlighted: true }
+                    );
+                    highlightedSidewalkIds.push(sidewalkId);
                 }
-                highlightedSidewalkId = sidewalkId;
-                map.setFeatureState(
-                    { source: 'sidewalks', id: sidewalkId },
-                    { highlighted: true }
-                );
-
+                // do a popup with ALL the selected sidewalks
                 var popupHtml = getEditPopup(
-                    sidewalkId,
                     sidewalkData.schedule_id,
                     sidewalkData.status
                 );
@@ -198,12 +219,14 @@
                 });
 
                 if (!features.length) {
-                    if (highlightedSidewalkId) {
-                        map.setFeatureState(
-                            { source: 'sidewalks', id: highlightedSidewalkId },
-                            { highlighted: false }
-                        );
-                        highlightedSidewalkId = null;
+                    if (highlightedSidewalkIds.length > 0) {
+                        for (let id of highlightedSidewalkIds) {
+                            map.setFeatureState(
+                                { source: 'sidewalks', id: id },
+                                { highlighted: false }
+                            );
+                        }
+                        highlightedSidewalkIds = [];
                     }
                 }
             });
@@ -258,7 +281,7 @@
             }
         }
 
-        function getEditPopup(id, schedule_id, status) {
+        function getEditPopup(schedule_id, status) {
             return `
                 <form id="popupForm">
                     <label for="schedule_id">Corrected Schedule ID:</label><br>
@@ -270,7 +293,7 @@
                         <option value="unresolved" ${status === 'unresolved' ? 'selected' : ''}>Unresolved</option>
                         <option value="ok" ${status === 'ok' ? 'selected' : ''}>OK</option>
                     </select>
-                    <button type="button" onclick="updateSidewalk(${id})">Submit</button>
+                    <button type="button" onclick="updateHighlightedSidewalks()">Submit</button>
                 </form>
             `;
         }
@@ -288,15 +311,21 @@
             `;
         }
 
-        function updateSidewalk(sidewalkId) {
+        function updateHighlightedSidewalks() {
+            var scheduleId = document.getElementById('schedule_id').value;
+            var status = document.getElementById('sidewalk_status').value;
+
+            for (let sidewalkId of highlightedSidewalkIds) {
+                updateSidewalk(sidewalkId, scheduleId, status);
+            }
+        }
+
+        function updateSidewalk(sidewalkId, scheduleId, status) {
             const accessToken = localStorage.getItem(authTokenKey);
             if (!accessToken) {
                 console.error("Not authenticated");
                 return;
             }
-
-            var scheduleId = document.getElementById('schedule_id').value;
-            var status = document.getElementById('sidewalk_status').value;
 
             fetch(`${serverUrl}/sidewalks/${sidewalkId}`, {
                 method: 'PUT',
@@ -401,6 +430,7 @@
         }
 
         var toggleMode = document.getElementById("toggleMode");
+        var leaveEditorButton = document.getElementById("leaveEditor");
 
         function hashToColor(hash) {
             var color = '#';
@@ -430,6 +460,10 @@
                     ['get', 'color']
                 ]);
             }
+        }
+
+        leaveEditorButton.onclick = function() {
+            window.location.href = '/';
         }
     </script>
     
