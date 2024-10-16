@@ -262,7 +262,7 @@ async def create_user(username: str, email: str, hashed_password: str, session: 
         username=username,
         email=email,
         hashed_password=hashed_password,
-        role="standard"
+        role="viewer"
     )
 
     session.add(new_user)
